@@ -26,7 +26,7 @@ def generate_embeddings_task(page=1, max_pages=1, output_file=None):
         output_file = os.path.join(output_dir, f"embeddings_page_{page}.csv")
     
     # Create embedding service
-    service = EmbeddingService(api_base_url='https://fashion.aknevrnky.dev')
+    service = EmbeddingService()
     
     # Define async function to run
     async def run_embedding_generation():

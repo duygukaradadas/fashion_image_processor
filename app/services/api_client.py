@@ -58,7 +58,6 @@ class ApiClient:
         
         Args:
             base_url: Base URL for the API. Defaults to environment variable API_BASE_URL 
-                    or 'https://fashion.aknevrnky.dev' if not provided.
         """
         self.base_url = base_url or os.getenv('API_BASE_URL')
         
