@@ -1,0 +1,23 @@
+services:
+  image-processor:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    networks:
+      - fashion_network
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - .:/app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.image-processor.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.image-processor.entrypoints=web"
+      - "traefik.http.routers.image-processor.service=image-processor"
+      - "traefik.http.services.image-processor.loadbalancer.server.port=8000"
+      - "traefik.http.services.image-processor.loadbalancer.server.scheme=http"
+
+networks:
+  fashion_network:
+    external: true
+
