@@ -17,6 +17,20 @@ services:
       - "traefik.http.services.image-processor.loadbalancer.server.port=8000"
       - "traefik.http.services.image-processor.loadbalancer.server.scheme=http"
 
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A app.celery_config.celery_app worker --loglevel=info
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+    networks:
+      - fashion_network
+    labels:
+      - "traefik.enable=false"
+
   redis:
     image: 'redis:alpine'
     volumes:
