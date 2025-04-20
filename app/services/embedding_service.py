@@ -50,7 +50,8 @@ class EmbeddingService:
     async def generate_embeddings_for_products(
         self, 
         product_ids: List[int], 
-        output_file: Optional[str] = None
+        output_file: Optional[str] = None,
+        append_mode: bool = False
     ) -> pd.DataFrame:
         """
         Generate embeddings for multiple products.
@@ -58,6 +59,7 @@ class EmbeddingService:
         Args:
             product_ids: List of product IDs
             output_file: Optional CSV file to save embeddings to
+            append_mode: Whether to append to existing CSV file
             
         Returns:
             DataFrame containing product IDs and their embeddings
@@ -83,110 +85,111 @@ class EmbeddingService:
         
         # Save to CSV if output_file is provided
         if output_file:
-            embeddings_df.to_csv(output_file, index=False)
-            print(f"Embeddings saved to {output_file}")
+            if append_mode and os.path.exists(output_file):
+                # Append without headers if file exists
+                embeddings_df.to_csv(output_file, mode='a', header=False, index=False)
+                print(f"Appended {len(embeddings_df)} embeddings to {output_file}")
+            else:
+                # Create new file with headers
+                embeddings_df.to_csv(output_file, index=False)
+                print(f"Created new embeddings file with {len(embeddings_df)} embeddings at {output_file}")
         
         return embeddings_df
     
-    async def generate_embeddings_from_page(
-        self, 
-        page: int = 1, 
-        output_file: Optional[str] = None
-    ) -> pd.DataFrame:
-        """
-        Generate embeddings for products from a specific page in the API.
-        
-        Args:
-            page: Page number to fetch products from
-            output_file: Optional CSV file to save embeddings to
-            
-        Returns:
-            DataFrame containing product IDs and their embeddings
-            
-        Raises:
-            Exception: If API request or embedding generation fails
-        """
-        # Get products from the API
-        products_response = await self.api_client.get_products(page=page)
-        
-        # Extract product IDs
-        product_ids = [product.id for product in products_response.data]
-        
-        # Generate embeddings
-        return await self.generate_embeddings_for_products(product_ids, output_file)
-    
-    async def generate_embeddings_for_all_products(
-        self, 
+    async def process_all_pages(
+        self,
+        output_file: str,
         start_page: int = 1,
         max_pages: Optional[int] = None,
-        output_file: Optional[str] = None
-    ) -> pd.DataFrame:
+        batch_size: int = 1
+    ) -> Dict:
         """
-        Generate embeddings for all products in the API.
+        Process all available pages of products from the API.
+        Each processed page will be saved to the CSV file incrementally.
         
         Args:
-            start_page: Page to start from
-            max_pages: Maximum number of pages to process (None = all)
-            output_file: Optional CSV file to save embeddings to
+            output_file: CSV file to save embeddings to (will be created or appended to)
+            start_page: Page number to start from (default: 1)
+            max_pages: Maximum number of pages to process (None = all available)
+            batch_size: Number of pages to process at once before saving
             
         Returns:
-            DataFrame containing product IDs and their embeddings
-            
-        Raises:
-            Exception: If API request or embedding generation fails
+            Dict with processing statistics
         """
-        all_embeddings = []
-        all_ids = []
+        # Ensure output directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(output_file)), exist_ok=True)
         
-        # Start with the first page
-        page = start_page
-        pages_processed = 0
+        total_products = 0
+        total_pages = 0
+        current_page = start_page
+        has_more_pages = True
+        append_mode = False  # First batch creates the file, subsequent batches append
         
-        while True:
-            # Check if we've reached the maximum number of pages
-            if max_pages is not None and pages_processed >= max_pages:
+        print(f"Starting embedding generation from page {start_page}, saving to {output_file}")
+        
+        while has_more_pages:
+            if max_pages is not None and total_pages >= max_pages:
+                print(f"Reached maximum page limit of {max_pages}")
                 break
                 
-            try:
-                # Get products from the current page
-                products_response = await self.api_client.get_products(page=page)
-                
-                if not products_response.data:
-                    # No more products
+            # Process a batch of pages
+            batch_pages_processed = 0
+            batch_products_processed = 0
+            
+            for _ in range(batch_size):
+                if max_pages is not None and total_pages >= max_pages:
                     break
-                
-                # Extract product IDs
-                product_ids = [product.id for product in products_response.data]
-                
-                # Generate embeddings for this page
-                for product_id in tqdm(product_ids, desc=f"Processing page {page}"):
-                    try:
-                        pid, embedding = await self.get_embedding_for_product(product_id)
-                        all_embeddings.append(embedding)
-                        all_ids.append(pid)
-                    except Exception as e:
-                        print(f"Error processing product {product_id}: {str(e)}")
-                
-                # Check if there's a next page
-                if not products_response.links.next:
-                    # No more pages
-                    break
-                
-                # Move to the next page
-                page += 1
-                pages_processed += 1
-                
-            except Exception as e:
-                print(f"Error processing page {page}: {str(e)}")
-                break
+                    
+                try:
+                    print(f"Fetching products from page {current_page}")
+                    # Get products from current page
+                    products_response = await self.api_client.get_products(page=current_page)
+                    
+                    if not products_response.data:
+                        print("No more products found")
+                        has_more_pages = False
+                        break
+                    
+                    # Extract product IDs
+                    product_ids = [product.id for product in products_response.data]
+                    
+                    # Generate and save embeddings for this page
+                    await self.generate_embeddings_for_products(
+                        product_ids=product_ids,
+                        output_file=output_file,
+                        append_mode=append_mode
+                    )
+                    
+                    # Update counters
+                    batch_pages_processed += 1
+                    batch_products_processed += len(product_ids)
+                    
+                    # Check if there are more pages
+                    if not products_response.links.next:
+                        print("No more pages available")
+                        has_more_pages = False
+                        break
+                    
+                    # Next page for next iteration
+                    current_page += 1
+                    append_mode = True  # Switch to append mode after first page
+                    
+                except Exception as e:
+                    print(f"Error processing page {current_page}: {str(e)}")
+                    # Continue with next page even if there's an error
+                    current_page += 1
+                    append_mode = True
+            
+            # Update overall stats
+            total_pages += batch_pages_processed
+            total_products += batch_products_processed
+            
+            print(f"Processed batch: {batch_pages_processed} pages, {batch_products_processed} products")
+            print(f"Total so far: {total_pages} pages, {total_products} products")
         
-        # Create DataFrame
-        embeddings_df = pd.DataFrame(all_embeddings)
-        embeddings_df.insert(0, "id", all_ids)
-        
-        # Save to CSV if output_file is provided
-        if output_file:
-            embeddings_df.to_csv(output_file, index=False)
-            print(f"Embeddings saved to {output_file}")
-        
-        return embeddings_df
+        return {
+            "total_pages_processed": total_pages,
+            "total_products_processed": total_products,
+            "output_file": output_file,
+            "device_info": self.model.get_device_info()
+        }

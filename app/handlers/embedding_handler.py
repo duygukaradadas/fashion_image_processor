@@ -5,26 +5,30 @@ from app.tasks.embedding_task import generate_embeddings_task
 
 async def generate_embeddings(
     background_tasks: BackgroundTasks,
-    page: int = Query(1, description="Starting page number"),
-    max_pages: int = Query(1, description="Maximum number of pages to process"),
-    output_file: Optional[str] = Query(None, description="Output CSV file path")
+    start_page: int = Query(1, description="Başlangıç sayfa numarası"),
+    max_pages: Optional[int] = Query(None, description="İşlenecek maksimum sayfa sayısı (None = tümü)"),
+    batch_size: int = Query(1, description="Her CSV kaydı için işlenecek sayfa sayısı"),
+    output_file: Optional[str] = Query(None, description="Çıktı CSV dosyası yolu")
 ):
     """
-    Handler to trigger embedding generation.
+    Tüm ürün sayfalarından embedding oluşturmayı tetikleyen handler.
+    Görevi Celery'ye gönderir ve arka planda çalıştırır.
     
     Args:
         background_tasks: FastAPI background tasks
-        page: Starting page number
-        max_pages: Maximum number of pages to process
-        output_file: Output CSV file path
+        start_page: Başlangıç sayfa numarası
+        max_pages: İşlenecek maksimum sayfa sayısı (None = tümü)
+        batch_size: Her CSV kaydı için işlenecek sayfa sayısı
+        output_file: Çıktı CSV dosyası yolu
         
     Returns:
-        dict: Task information
+        dict: Görev bilgileri
     """
-    # Queue the task in Celery
+    # Celery görevini sıraya al
     task = generate_embeddings_task.delay(
-        page=page,
+        start_page=start_page,
         max_pages=max_pages,
+        batch_size=batch_size,
         output_file=output_file
     )
     
@@ -32,8 +36,10 @@ async def generate_embeddings(
         "task_id": task.id,
         "status": "queued",
         "parameters": {
-            "page": page,
-            "max_pages": max_pages,
+            "start_page": start_page,
+            "max_pages": max_pages if max_pages is not None else "all",
+            "batch_size": batch_size,
             "output_file": output_file
-        }
+        },
+        "message": "Ürün embeddingi oluşturma görevi başlatıldı. Tüm sayfalar işlenecek ve sonuçlar CSV dosyasına kaydedilecek."
     }

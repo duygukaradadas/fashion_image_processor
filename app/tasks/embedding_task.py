@@ -7,48 +7,49 @@ from app.celery_config import celery_app
 
 
 @celery_app.task(name="generate_embeddings")
-def generate_embeddings_task(page=1, max_pages=1, output_file=None):
+def generate_embeddings_task(start_page=1, max_pages=None, output_file=None, batch_size=1):
     """
-    Celery task to generate embeddings for products.
+    Tüm ürün sayfalarından embedding oluşturan Celery görevi.
     
     Args:
-        page: Starting page number
-        max_pages: Maximum number of pages to process
-        output_file: Output CSV file path
+        start_page: Başlangıç sayfa numarası
+        max_pages: İşlenecek maksimum sayfa sayısı (None = tümü)
+        output_file: Çıktı CSV dosyası yolu
+        batch_size: Her kaydedilmeden önce işlenecek sayfa grubu boyutu
         
     Returns:
-        dict: Task result information
+        dict: Görev sonuç bilgileri
     """
-    # Set default output file if not provided
+    # Varsayılan çıktı dosyası belirtilmemişse oluştur
     if not output_file:
         output_dir = os.path.join(os.getcwd(), "embeddings")
         os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f"embeddings_page_{page}.csv")
+        output_file = os.path.join(output_dir, "product_embeddings.csv")
     
-    # Create embedding service
+    # Embedding servisi oluştur
     service = EmbeddingService()
     
-    # Define async function to run
-    async def run_embedding_generation():
-        if max_pages == 1:
-            # Generate embeddings for a single page
-            await service.generate_embeddings_from_page(page=page, output_file=output_file)
-        else:
-            # Generate embeddings for multiple pages
-            await service.generate_embeddings_for_all_products(
-                start_page=page,
-                max_pages=max_pages,
-                output_file=output_file
-            )
+    # Çalıştırılacak asenkron fonksiyonu tanımla
+    async def process_all_pages():
+        result = await service.process_all_pages(
+            output_file=output_file,
+            start_page=start_page,
+            max_pages=max_pages,
+            batch_size=batch_size
+        )
+        return result
     
-    # Run the async function
+    # Asenkron fonksiyonu çalıştır
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_embedding_generation())
+    result = loop.run_until_complete(process_all_pages())
     
     return {
         "status": "completed",
-        "start_page": page,
+        "start_page": start_page,
         "max_pages": max_pages,
+        "batch_size": batch_size,
         "output_file": output_file,
-        "device_info": service.model.get_device_info()
+        "total_pages_processed": result["total_pages_processed"],
+        "total_products_processed": result["total_products_processed"],
+        "device_info": result["device_info"]
     }
