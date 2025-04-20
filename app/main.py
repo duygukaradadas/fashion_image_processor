@@ -1,19 +1,8 @@
-import os
-
 from fastapi import FastAPI
+from app.handlers import home_handler
 
 app = FastAPI()
 
-@app.get("/")
-async def root():
-    app_name: str = os.getenv("APP_NAME")
+app.get("/")(home_handler.root)
 
-    return {
-        "message": "Hello World",
-        "appName": app_name,
-    }
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+app.get("/hello/{name}")(home_handler.say_hello)
