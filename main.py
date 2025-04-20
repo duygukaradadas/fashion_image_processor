@@ -1,11 +1,20 @@
+import os
+
 from fastapi import FastAPI
+from dotenv import load_dotenv
+
+load_dotenv()  # take environment variables
 
 app = FastAPI()
 
-
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    app_name: str = os.getenv("APP_NAME")
+
+    return {
+        "message": "Hello World",
+        "appName": app_name,
+    }
 
 
 @app.get("/hello/{name}")
