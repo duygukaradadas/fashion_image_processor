@@ -17,7 +17,25 @@ services:
       - "traefik.http.services.image-processor.loadbalancer.server.port=8000"
       - "traefik.http.services.image-processor.loadbalancer.server.scheme=http"
 
+  redis:
+    image: 'redis:alpine'
+    volumes:
+      - 'image-processor-redis:/data'
+    networks:
+      - fashion_network
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      retries: 3
+      timeout: 5s
+    labels:
+      - "traefik.enable=false"
+
 networks:
   fashion_network:
     external: true
 
+volumes:
+  image-processor-redis:
