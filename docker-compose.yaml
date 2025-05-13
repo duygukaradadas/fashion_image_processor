@@ -9,6 +9,10 @@ services:
       - 'host.docker.internal:host-gateway'
     volumes:
       - .:/app
+    ports:
+    - "4000:8000"
+    environment:
+      - API_BASE_URL=https://fashion.aknevrnky.dev
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.image-processor.rule=Host(`${APP_HOST}`)"
@@ -26,6 +30,8 @@ services:
       - redis
     volumes:
       - .:/app
+    environment:
+      - API_BASE_URL=https://fashion.aknevrnky.dev
     networks:
       - fashion_network
     labels:

@@ -31,17 +31,28 @@ def generate_embeddings_task(start_page=1, max_pages=None, output_file=None, bat
     
     # Çalıştırılacak asenkron fonksiyonu tanımla
     async def process_all_pages():
-        result = await service.process_all_pages(
-            output_file=output_file,
-            start_page=start_page,
-            max_pages=max_pages,
-            batch_size=batch_size
-        )
-        return result
+        try:
+            result = await service.process_all_pages(
+                output_file=output_file,
+                start_page=start_page,
+                max_pages=max_pages,
+                batch_size=batch_size
+            )
+            return result
+        except Exception as e:
+            print(f"Error in process_all_pages: {str(e)}")
+            raise
     
-    # Asenkron fonksiyonu çalıştır
-    loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(process_all_pages())
+    # Create a new event loop for this task
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(process_all_pages())
+    except Exception as e:
+        print(f"Error running async task: {str(e)}")
+        raise
+    finally:
+        loop.close()
     
     return {
         "status": "completed",

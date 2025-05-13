@@ -2,13 +2,27 @@ import os
 
 from celery import Celery
 
+# Redis connection settings
+redis_host = os.getenv('REDIS_HOST', 'redis')
+redis_port = os.getenv('REDIS_PORT', 6379)
+
+# Celery configuration
 celery_app = Celery(
-    "image_processor",
-    broker=os.getenv("CELERY_BROKER_DSN"),
-    backend=os.getenv("CELERY_BACKEND_DSN"),
-    include=['app.tasks.ping', 'app.tasks.embedding_task']
+    'fashion_processor',
+    broker=f'redis://{redis_host}:{redis_port}/0',
+    backend=f'redis://{redis_host}:{redis_port}/0'
 )
 
+celery_app.conf.update(
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+)
+
+# Updated task routes to use simple names
 celery_app.conf.task_routes = {
-    "app.tasks.*": {"queue": "default"},
+    "generate_embeddings": {"queue": "celery"},
+    "app.tasks.ping.ping": {"queue": "celery"},
 }

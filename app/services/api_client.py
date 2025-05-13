@@ -2,6 +2,7 @@ import os
 from typing import Dict, List, Optional, Any
 import httpx
 from pydantic import BaseModel
+from urllib.parse import urljoin
 
 
 class ProductResponse(BaseModel):
@@ -136,7 +137,17 @@ class ApiClient:
             product = await self.get_product(product_id)
             image_url = product.image_url
             
+        # Handle relative URLs by prepending the base URL
+        if image_url.startswith('/'):
+            # Remove trailing slash from base_url if present
+            base = self.base_url.rstrip('/')
+            # Remove leading slash from image_url
+            img = image_url.lstrip('/')
+            # Join with a single slash
+            image_url = f"{base}/{img}"
+            
         async with httpx.AsyncClient() as client:
+            print(f"Fetching image from: {image_url}")  # Debug log
             response = await client.get(image_url)
             response.raise_for_status()
             

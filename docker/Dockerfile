@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libpng-dev \
     libjpeg-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./requirements.txt requirements.txt

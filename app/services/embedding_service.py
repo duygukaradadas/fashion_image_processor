@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Tuple
 
 from app.resnet.model import ResNetEmbedder
 from app.services.api_client import ApiClient
+from app.services.redis_service import RedisService
 
 
 class EmbeddingService:
@@ -25,6 +26,8 @@ class EmbeddingService:
         """
         self.api_client = ApiClient(base_url=api_base_url)
         self.model = ResNetEmbedder()
+        self.redis_service = RedisService()
+
         
     async def get_embedding_for_product(self, product_id: int) -> Tuple[int, np.ndarray]:
         """
@@ -39,11 +42,20 @@ class EmbeddingService:
         Raises:
             Exception: If image retrieval or embedding generation fails
         """
+        # Önce Redis'te kontrol et
+        existing_embedding = self.redis_service.get_embedding(product_id)
+        if existing_embedding is not None:
+            print(f"Ürün {product_id} için Redis'ten embedding alındı.")
+            return (product_id, existing_embedding)
+        
         # Get the product image
         image_data = await self.api_client.get_product_image(product_id=product_id)
         
         # Generate embedding
         embedding = self.model.get_embedding(image_data)
+        
+        # Save to Redis
+        self.redis_service.save_embedding(product_id, embedding.tolist())
         
         return (product_id, embedding)
     
