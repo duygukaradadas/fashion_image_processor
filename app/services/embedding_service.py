@@ -59,6 +59,35 @@ class EmbeddingService:
         
         return (product_id, embedding)
     
+    async def update_embedding_for_product(self, product_id: int) -> Tuple[int, np.ndarray]:
+        """
+        Force update embedding for a single product, even if it already exists in Redis.
+        
+        Args:
+            product_id: ID of the product
+            
+        Returns:
+            Tuple containing (product_id, embedding vector)
+            
+        Raises:
+            Exception: If image retrieval or embedding generation fails
+        """
+        try:
+            # Get the product image
+            image_data = await self.api_client.get_product_image(product_id=product_id)
+            
+            # Generate embedding
+            embedding = self.model.get_embedding(image_data)
+            
+            # Save to Redis, overwriting any existing embedding
+            self.redis_service.save_embedding(product_id, embedding.tolist())
+            
+            print(f"Ürün {product_id} için embedding güncellendi.")
+            return (product_id, embedding)
+        except Exception as e:
+            print(f"Ürün {product_id} için embedding güncellenirken hata: {str(e)}")
+            raise
+    
     async def generate_embeddings_for_products(
         self, 
         product_ids: List[int], 

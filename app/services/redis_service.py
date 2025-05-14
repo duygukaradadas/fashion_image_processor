@@ -82,6 +82,33 @@ class RedisService:
             print(f"Redis'ten alma hatası: {str(e)}")
             return None
     
+    def delete_embedding(self, product_id: int) -> bool:
+        """
+        Ürün embedding'ini Redis'ten sil.
+        
+        Args:
+            product_id: Ürün ID'si
+            
+        Returns:
+            bool: Silme işleminin başarılı olup olmadığı
+        """
+        try:
+            key = f"embedding:{product_id}"
+            
+            # Redis'ten sil, sonuç olarak silinen key sayısını döndürür (0 veya 1)
+            result = self.redis.delete(key)
+            
+            if result > 0:
+                print(f"Ürün {product_id} için embedding Redis'ten silindi.")
+                return True
+            else:
+                print(f"Ürün {product_id} için embedding Redis'te bulunamadı veya silinemedi.")
+                return False
+                
+        except Exception as e:
+            print(f"Redis'ten silme hatası: {str(e)}")
+            return False
+    
     def find_similar_products(self, product_id: int, top_n: int = 5) -> List[Dict]:
         """
         Belirli bir ürün ID'si için benzer ürünleri bul.

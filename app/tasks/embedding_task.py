@@ -3,6 +3,7 @@ import asyncio
 from celery import shared_task
 
 from app.services.embedding_service import EmbeddingService
+from app.services.redis_service import RedisService
 from app.celery_config import celery_app
 
 
@@ -64,3 +65,134 @@ def generate_embeddings_task(start_page=1, max_pages=None, output_file=None, bat
         "total_products_processed": result["total_products_processed"],
         "device_info": result["device_info"]
     }
+
+
+@celery_app.task(name="generate_single_embedding")
+def generate_single_embedding_task(product_id):
+    """
+    Tek bir ürün için embedding oluşturan Celery görevi.
+    
+    Args:
+        product_id: Embedding oluşturulacak ürün ID'si
+        
+    Returns:
+        dict: Görev sonuç bilgileri
+    """
+    # Embedding servisi oluştur
+    service = EmbeddingService()
+    
+    # Çalıştırılacak asenkron fonksiyonu tanımla
+    async def process_single_product():
+        try:
+            product_id_result, embedding = await service.get_embedding_for_product(product_id)
+            return {
+                "product_id": product_id_result,
+                "embedding_dimension": embedding.shape[0],
+                "success": True
+            }
+        except Exception as e:
+            print(f"Error processing product {product_id}: {str(e)}")
+            return {
+                "product_id": product_id,
+                "success": False,
+                "error": str(e)
+            }
+    
+    # Create a new event loop for this task
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(process_single_product())
+    except Exception as e:
+        print(f"Error running async task: {str(e)}")
+        raise
+    finally:
+        loop.close()
+    
+    return {
+        "status": "completed" if result.get("success", False) else "failed",
+        "product_id": product_id,
+        "result": result
+    }
+
+
+@celery_app.task(name="update_single_embedding")
+def update_single_embedding_task(product_id):
+    """
+    Tek bir ürün için embedding'i güncelleyen Celery görevi.
+    
+    Args:
+        product_id: Embedding'i güncellenecek ürün ID'si
+        
+    Returns:
+        dict: Görev sonuç bilgileri
+    """
+    # Embedding servisi oluştur
+    service = EmbeddingService()
+    
+    # Çalıştırılacak asenkron fonksiyonu tanımla
+    async def update_single_product():
+        try:
+            product_id_result, embedding = await service.update_embedding_for_product(product_id)
+            return {
+                "product_id": product_id_result,
+                "embedding_dimension": embedding.shape[0],
+                "success": True
+            }
+        except Exception as e:
+            print(f"Error updating product {product_id}: {str(e)}")
+            return {
+                "product_id": product_id,
+                "success": False,
+                "error": str(e)
+            }
+    
+    # Create a new event loop for this task
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(update_single_product())
+    except Exception as e:
+        print(f"Error running async task: {str(e)}")
+        raise
+    finally:
+        loop.close()
+    
+    return {
+        "status": "completed" if result.get("success", False) else "failed",
+        "product_id": product_id,
+        "result": result
+    }
+
+
+@celery_app.task(name="delete_single_embedding")
+def delete_single_embedding_task(product_id):
+    """
+    Tek bir ürün için embedding'i silen Celery görevi.
+    
+    Args:
+        product_id: Embedding'i silinecek ürün ID'si
+        
+    Returns:
+        dict: Görev sonuç bilgileri
+    """
+    try:
+        # Redis servisi oluştur
+        redis_service = RedisService()
+        
+        # Embedding'i sil
+        success = redis_service.delete_embedding(product_id)
+        
+        return {
+            "status": "completed",
+            "product_id": product_id,
+            "success": success
+        }
+    except Exception as e:
+        print(f"Error deleting embedding for product {product_id}: {str(e)}")
+        return {
+            "status": "failed",
+            "product_id": product_id,
+            "success": False,
+            "error": str(e)
+        }

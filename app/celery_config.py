@@ -24,5 +24,8 @@ celery_app.conf.update(
 # Updated task routes to use simple names
 celery_app.conf.task_routes = {
     "generate_embeddings": {"queue": "celery"},
+    "generate_single_embedding": {"queue": "celery"},
+    "update_single_embedding": {"queue": "celery"},
+    "delete_single_embedding": {"queue": "celery"},
     "app.tasks.ping.ping": {"queue": "celery"},
 }

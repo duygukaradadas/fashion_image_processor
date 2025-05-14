@@ -14,8 +14,11 @@ def ping_task():
     task = ping.delay()
     return {"task_id": task.id, "status": "queued"}
 
-# Embedding endpoint using handler pattern
+# Embedding endpoints
 app.post("/embeddings/generate")(embedding_handler.generate_embeddings)
+app.post("/embeddings/product/{product_id}")(embedding_handler.generate_single_embedding)
+app.put("/embeddings/product/{product_id}")(embedding_handler.update_single_embedding)
+app.delete("/embeddings/product/{product_id}")(embedding_handler.delete_single_embedding)
 
 @app.get("/similar-products/{product_id}")
 async def get_similar_products(

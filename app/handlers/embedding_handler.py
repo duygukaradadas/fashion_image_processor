@@ -1,6 +1,11 @@
-from fastapi import Query, BackgroundTasks
+from fastapi import Query, BackgroundTasks, Path
 from typing import Optional
-from app.tasks.embedding_task import generate_embeddings_task
+from app.tasks.embedding_task import (
+    generate_embeddings_task,
+    generate_single_embedding_task,
+    update_single_embedding_task,
+    delete_single_embedding_task
+)
 
 
 async def generate_embeddings(
@@ -42,4 +47,74 @@ async def generate_embeddings(
             "output_file": output_file
         },
         "message": "Ürün embeddingi oluşturma görevi başlatıldı. Tüm sayfalar işlenecek ve sonuçlar CSV dosyasına kaydedilecek."
+    }
+
+
+async def generate_single_embedding(
+    product_id: int = Path(..., description="Embedding oluşturulacak ürün ID'si")
+):
+    """
+    Belirli bir ürün için embedding oluşturmayı tetikleyen handler.
+    
+    Args:
+        product_id: Embedding oluşturulacak ürün ID'si
+        
+    Returns:
+        dict: Görev bilgileri
+    """
+    # Celery görevini sıraya al
+    task = generate_single_embedding_task.delay(product_id=product_id)
+    
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "product_id": product_id,
+        "message": f"Ürün ID {product_id} için embedding oluşturma görevi başlatıldı."
+    }
+
+
+async def update_single_embedding(
+    product_id: int = Path(..., description="Embedding'i güncellenecek ürün ID'si")
+):
+    """
+    Belirli bir ürün için embedding'i güncellemeyi tetikleyen handler.
+    Varolan embedding'i siler ve yeniden oluşturur.
+    
+    Args:
+        product_id: Embedding'i güncellenecek ürün ID'si
+        
+    Returns:
+        dict: Görev bilgileri
+    """
+    # Celery görevini sıraya al
+    task = update_single_embedding_task.delay(product_id=product_id)
+    
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "product_id": product_id,
+        "message": f"Ürün ID {product_id} için embedding güncelleme görevi başlatıldı."
+    }
+
+
+async def delete_single_embedding(
+    product_id: int = Path(..., description="Embedding'i silinecek ürün ID'si")
+):
+    """
+    Belirli bir ürün için embedding'i silmeyi tetikleyen handler.
+    
+    Args:
+        product_id: Embedding'i silinecek ürün ID'si
+        
+    Returns:
+        dict: Görev bilgileri
+    """
+    # Celery görevini sıraya al
+    task = delete_single_embedding_task.delay(product_id=product_id)
+    
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "product_id": product_id,
+        "message": f"Ürün ID {product_id} için embedding silme görevi başlatıldı."
     }
