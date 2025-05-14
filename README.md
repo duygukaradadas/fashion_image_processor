@@ -41,11 +41,29 @@ This will start:
 
 ## API Endpoints
 
-### Generate Embeddings
+### Generate Embeddings for All Products
 ```http
 POST /embeddings/generate
 ```
 Generates embeddings for all products in the database.
+
+### Generate Embedding for a Specific Product
+```http
+POST /embeddings/product/{product_id}
+```
+Generates an embedding only for the product with the given product ID.
+
+### Update Embedding for a Specific Product
+```http
+PUT /embeddings/product/{product_id}
+```
+Updates the embedding for the product with the given product ID.
+
+### Delete Embedding for a Specific Product
+```http
+DELETE /embeddings/product/{product_id}
+```
+Deletes the embedding for the product with the given product ID.
 
 ### Find Similar Products
 ```http
@@ -93,6 +111,38 @@ Environment variables:
 - `API_BASE_URL`: Base URL for the fashion API
 - `REDIS_URL`: Redis connection URL
 - `CELERY_BROKER_URL`: Celery broker URL
+
+## API Usage Examples
+
+### Generate All Embeddings
+```bash
+curl -X POST "http://localhost:4000/embeddings/generate" \
+  -H "Content-Type: application/json"
+```
+
+### Generate Embedding for a Specific Product
+```bash
+curl -X POST "http://localhost:4000/embeddings/product/123" \
+  -H "Content-Type: application/json"
+```
+
+### Update Embedding for a Specific Product
+```bash
+curl -X PUT "http://localhost:4000/embeddings/product/123" \
+  -H "Content-Type: application/json"
+```
+
+### Delete Embedding for a Specific Product
+```bash
+curl -X DELETE "http://localhost:4000/embeddings/product/123" \
+  -H "Content-Type: application/json"
+```
+
+### Find Similar Products
+```bash
+curl -X GET "http://localhost:4000/similar-products/123?top_n=5" \
+  -H "Content-Type: application/json"
+```
 
 ## License
 
