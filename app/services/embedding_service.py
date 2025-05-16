@@ -124,8 +124,11 @@ class EmbeddingService:
         embeddings_df = pd.DataFrame(embeddings)
         embeddings_df.insert(0, "id", ids)
         
-        # Save to CSV if output_file is provided
-        if output_file:
+        # Check environment variable to decide whether to write to file
+        write_to_file_env = os.getenv('WRITE_EMBEDDINGS_TO_FILE', 'false').lower()
+        
+        # Save to CSV if output_file is provided and environment variable is true
+        if output_file and write_to_file_env == 'true':
             if append_mode and os.path.exists(output_file):
                 # Append without headers if file exists
                 embeddings_df.to_csv(output_file, mode='a', header=False, index=False)
