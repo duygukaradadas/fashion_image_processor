@@ -7,19 +7,17 @@ services:
       - fashion_network
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    ports:
+      - "4000:8000"
     volumes:
       - .:/app
-    ports:
-    - "4000:8000"
-    environment:
-      - API_BASE_URL=https://fashion.aknevrnky.dev
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.image-processor.rule=Host(`${APP_HOST}`)"
-      - "traefik.http.routers.image-processor.entrypoints=web"
+      - "traefik.http.routers.image-processor.entrypoints=websecure"
       - "traefik.http.routers.image-processor.service=image-processor"
+      - "traefik.http.routers.image-processor.tls=true"
       - "traefik.http.services.image-processor.loadbalancer.server.port=8000"
-      - "traefik.http.services.image-processor.loadbalancer.server.scheme=http"
 
   celery-worker:
     build:
@@ -30,8 +28,6 @@ services:
       - redis
     volumes:
       - .:/app
-    environment:
-      - API_BASE_URL=https://fashion.aknevrnky.dev
     networks:
       - fashion_network
     labels:
