@@ -29,10 +29,10 @@ class PaginationMeta(BaseModel):
     to: int
     total: int
 
-    class Config:
-        fields = {
-            'from_': 'from'
-        }
+    model_config = {
+        'populate_by_name': True,
+        'alias_generator': lambda x: 'from' if x == 'from_' else x
+    }
 
 
 class PaginationLinks(BaseModel):
