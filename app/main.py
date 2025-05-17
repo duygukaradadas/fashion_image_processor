@@ -1,30 +1,20 @@
 from fastapi import FastAPI, Query
-from app.handlers import home_handler, embedding_handler
-from app.tasks.ping import ping
-from app.services.redis_service import RedisService
+from app.handlers import home_handler
 from app.services.qdrant_service import QdrantService
 from app.middleware import APIKeyAuthMiddleware
-import numpy as np
+from app.routes import embedding_routes
 
 app = FastAPI()
 
 # Add the authentication middleware
 app.add_middleware(APIKeyAuthMiddleware)
 
+# Include embedding routes
+app.include_router(embedding_routes.router, prefix="/embeddings", tags=["embeddings"])
+
+# Basic endpoints
 app.get("/")(home_handler.root)
-
 app.get("/hello/{name}")(home_handler.say_hello)
-
-@app.get("/ping")
-def ping_task():
-    task = ping.delay()
-    return {"task_id": task.id, "status": "queued"}
-
-# Embedding endpoints
-app.post("/embeddings/generate")(embedding_handler.generate_embeddings)
-app.post("/embeddings/product/{product_id}")(embedding_handler.generate_single_embedding)
-app.put("/embeddings/product/{product_id}")(embedding_handler.update_single_embedding)
-app.delete("/embeddings/product/{product_id}")(embedding_handler.delete_single_embedding)
 
 @app.get("/similar-products/{product_id}")
 async def get_similar_products(
@@ -33,48 +23,15 @@ async def get_similar_products(
 ):
     """Find similar products based on image embeddings."""
     qdrant_service = QdrantService()
-    similar_products = qdrant_service.find_similar_products(product_id=product_id, top_n=top_n)
-    return {"similar_products": similar_products}
-
-@app.post("/admin/migrate-to-qdrant")
-async def migrate_to_qdrant():
-    """Migrate all existing embeddings from Redis to Qdrant."""
-    redis_service = RedisService()
-    qdrant_service = QdrantService()
+    similar_products = qdrant_service.find_similar_products(product_id, top_n)
     
-    # Get all product IDs from Redis
-    all_keys = redis_service.redis.keys("embedding:*")
-    product_ids = [int(key.split(':')[1]) for key in all_keys]
+    # Transform the response to include image URLs
+    response = []
+    for product in similar_products:
+        response.append({
+            "id": product["id"],
+            "similarity_score": product["similarity"],
+            "image_url": f"https://fashion.aknevrnky.dev/api/products/{product['id']}/image"
+        })
     
-    batch_size = 100
-    total_migrated = 0
-    
-    # Process in batches
-    for i in range(0, len(product_ids), batch_size):
-        batch_ids = product_ids[i:i+batch_size]
-        
-        # Get embeddings from Redis
-        embeddings_dict = {}
-        for pid in batch_ids:
-            embedding = redis_service.get_embedding(pid)
-            if embedding is not None:
-                embeddings_dict[pid] = embedding
-        
-        # Convert to format needed for Qdrant batch save
-        batch_product_ids = list(embeddings_dict.keys())
-        batch_embeddings = [embeddings_dict[pid] for pid in batch_product_ids]
-        
-        # FIX: Convert to numpy array before passing to Qdrant
-        if batch_product_ids:
-            batch_embeddings_np = np.array(batch_embeddings)
-            try:
-                success = qdrant_service.save_embeddings_batch(
-                    product_ids=batch_product_ids,
-                    embeddings=batch_embeddings_np
-                )
-                if success:
-                    total_migrated += len(batch_product_ids)
-            except Exception as e:
-                print(f"Error saving batch to Qdrant: {str(e)}")
-    
-    return {"status": "completed", "total_migrated": total_migrated}
+    return {"similar_products": response}

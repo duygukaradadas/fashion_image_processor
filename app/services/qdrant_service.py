@@ -29,6 +29,7 @@ class QdrantService:
     def initialize_collection(self, collection_name: str = "fashion_products"):
         """
         Check if the collection exists and create it if it doesn't.
+        Configure HNSW index for fast similarity search.
         
         Args:
             collection_name: Name of the collection to initialize
@@ -45,11 +46,40 @@ class QdrantService:
                     vectors_config=models.VectorParams(
                         size=2048,  # ResNet50 embedding size
                         distance=models.Distance.COSINE
+                    ),
+                    optimizers_config=models.OptimizersConfigDiff(
+                        indexing_threshold=0,  # Enable immediate indexing
+                        memmap_threshold=20000,  # Use memory-mapped files for large collections
+                        default_segment_number=2  # Optimize for parallel processing
+                    ),
+                    hnsw_config=models.HnswConfigDiff(
+                        m=16,  # Number of connections per element
+                        ef_construct=100,  # Size of the dynamic candidate list
+                        full_scan_threshold=10,  # Minimum allowed by Qdrant, always use HNSW index
+                        max_indexing_threads=4,  # Number of threads for index construction
+                        on_disk=False  # Keep index in memory for faster search
                     )
                 )
-                print(f"Collection '{collection_name}' created successfully")
+                print(f"Collection '{collection_name}' created successfully with HNSW index")
             else:
                 print(f"Collection '{collection_name}' already exists")
+                # Update collection configuration to optimize for similarity search
+                self.client.update_collection(
+                    collection_name=collection_name,
+                    optimizers_config=models.OptimizersConfigDiff(
+                        indexing_threshold=0,  # Enable immediate indexing
+                        memmap_threshold=20000,  # Use memory-mapped files for large collections
+                        default_segment_number=2  # Optimize for parallel processing
+                    ),
+                    hnsw_config=models.HnswConfigDiff(
+                        m=16,  # Number of connections per element
+                        ef_construct=100,  # Size of the dynamic candidate list
+                        full_scan_threshold=10,  # Minimum allowed by Qdrant, always use HNSW index
+                        max_indexing_threads=4,  # Number of threads for index construction
+                        on_disk=False  # Keep index in memory for faster search
+                    )
+                )
+                print(f"Collection '{collection_name}' configuration updated for fast similarity search")
                 
         except Exception as e:
             print(f"Error initializing Qdrant collection: {str(e)}")
@@ -69,7 +99,7 @@ class QdrantService:
             self.client.upsert(
                 collection_name="fashion_products",
                 points=[{
-                    "id": str(product_id),
+                    "id": int(product_id),  # Convert to integer
                     "vector": embedding
                 }]
             )
@@ -92,7 +122,7 @@ class QdrantService:
         try:
             result = self.client.retrieve(
                 collection_name="fashion_products",
-                ids=[str(product_id)]
+                ids=[int(product_id)]
             )
             if result and result[0].vector is not None:
                 return np.array(result[0].vector, dtype=np.float32)
@@ -117,13 +147,13 @@ class QdrantService:
         result_dict = {}
         
         try:
-            # Convert product IDs to strings for Qdrant
-            str_ids = [str(pid) for pid in product_ids]
+            # Convert product IDs to integers for Qdrant
+            int_ids = [int(pid) for pid in product_ids]
             
             # Retrieve vectors from Qdrant
             results = self.client.retrieve(
                 collection_name="fashion_products",
-                ids=str_ids,
+                ids=int_ids,
                 with_vectors=True
             )
             
@@ -165,7 +195,7 @@ class QdrantService:
                 embedding_list = embeddings[i].tolist() if isinstance(embeddings[i], np.ndarray) else embeddings[i]
                 
                 points.append({
-                    "id": str(product_id),
+                    "id": int(product_id),  # Convert to integer
                     "vector": embedding_list
                 })
                 
@@ -205,7 +235,7 @@ class QdrantService:
     
     def find_similar_products(self, product_id: int, top_n: int = 5) -> List[Dict]:
         """
-        Find similar products using Qdrant vector search.
+        Find similar products using Qdrant vector search with optimized parameters.
         
         Args:
             product_id: Product ID to find similar items for
@@ -215,24 +245,74 @@ class QdrantService:
             List of similar product IDs and similarity scores
         """
         try:
-            # Get the embedding for the query product (from Qdrant)
+            # Get the embedding for the query product
+            embedding = self.get_embedding(product_id)
+            if embedding is None:
+                print(f"No embedding found for product {product_id}")
+                return []
+            
+            # Get total number of points in collection
+            collection_info = self.client.get_collection("fashion_products")
+            total_points = collection_info.points_count
+            
+            # If we have fewer points than requested, adjust the limit
+            search_limit = min(top_n + 1, total_points)
+            
+            # Search for similar products using the embedding with optimized parameters
             search_result = self.client.search(
                 collection_name="fashion_products",
-                query_vector_id=str(product_id),
-                limit=top_n + 1  # +1 because we'll filter out the query product itself
+                query_vector=embedding.tolist(),
+                limit=search_limit,
+                search_params=models.SearchParams(
+                    hnsw_ef=128,  # Size of the dynamic candidate list for HNSW search
+                    exact=False  # Use approximate search for better performance
+                ),
+                score_threshold=0.7  # Only return results with similarity score above 0.7
             )
             
-            # Filter out the query product
+            # Filter out the query product and format results
             similar_products = []
             for result in search_result:
                 result_id = int(result.id)
                 if result_id != product_id:  # Skip the query product
                     similar_products.append({
                         'id': result_id,
-                        'similarity': result.score
+                        'similarity': result.score,
+                        'image_url': f"https://fashion.aknevrnky.dev/api/products/{result_id}/image"
                     })
             
             return similar_products[:top_n]
         except Exception as e:
             print(f"Qdrant benzer ürün arama hatası: {str(e)}")
+            return []
+
+    async def search_similar(self, embedding: List[float], limit: int = 5) -> List[Dict]:
+        """
+        Search for similar vectors using a query vector.
+        
+        Args:
+            embedding: Query vector to search with
+            limit: Number of similar vectors to return
+            
+        Returns:
+            List of similar vectors with their IDs and similarity scores
+        """
+        try:
+            search_result = self.client.search(
+                collection_name="fashion_products",
+                query_vector=embedding,
+                limit=limit
+            )
+            
+            similar_products = []
+            for result in search_result:
+                similar_products.append({
+                    'product_id': int(result.id),
+                    'similarity_score': float(result.score),
+                    'image_url': f"https://fashion.aknevrnky.dev/api/products/{result.id}/image"  # Construct image URL
+                })
+            
+            return similar_products
+        except Exception as e:
+            print(f"Qdrant similarity search error: {str(e)}")
             return []

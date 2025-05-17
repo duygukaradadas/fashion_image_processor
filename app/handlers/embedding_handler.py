@@ -1,17 +1,83 @@
 import math
 import os
-from fastapi import Query, BackgroundTasks, Path, HTTPException
-from typing import Optional, List
+from fastapi import Query, BackgroundTasks, Path, HTTPException, APIRouter
+from typing import Optional, List, Dict
 from app.tasks.embedding_task import (
-    generate_embeddings_task,
-    generate_single_embedding_task,
-    update_single_embedding_task,
-    delete_single_embedding_task
+    generate_embedding,
+    generate_embeddings_batch,
+    delete_embedding
 )
+from app.services.embedding_service import EmbeddingService
 from app.services.api_client import ApiClient
 
+router = APIRouter()
 
-async def generate_embeddings(
+@router.post("/generate")
+async def generate_embeddings(product_ids: List[int]):
+    """Generate embeddings for multiple products."""
+    try:
+        task = generate_embeddings_batch.delay(product_ids)
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "product_ids": product_ids
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/product/{product_id}")
+async def generate_single_embedding(product_id: int):
+    """Generate embedding for a single product."""
+    try:
+        task = generate_embedding.delay(product_id)
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "product_id": product_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/product/{product_id}")
+async def update_single_embedding(product_id: int):
+    """Update embedding for a single product."""
+    try:
+        task = generate_embedding.delay(product_id)
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "product_id": product_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/product/{product_id}")
+async def delete_single_embedding(product_id: int):
+    """Delete embedding for a single product."""
+    try:
+        task = delete_embedding.delay(product_id)
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "product_id": product_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-all")
+async def generate_all_embeddings(
+    start_page: int = Query(1, description="Başlangıç sayfa numarası"),
+    batch_size: int = Query(100, description="Her CSV kaydı için işlenecek sayfa sayısı (varsayılan 100)"),
+    output_file: Optional[str] = Query(None, description="Çıktı CSV dosyası yolu")
+):
+    """
+    Generate embeddings for all products.
+    The work is divided based on CELERY_WORKER_CONCURRENCY environment variable (default 4).
+    Total number of pages to process can be limited with MAX_PAGES_OVERALL environment variable.
+    """
+    return await generate_embeddings_old(start_page, batch_size, output_file)
+
+async def generate_embeddings_old(
     start_page: int = Query(1, description="Başlangıç sayfa numarası"),
     batch_size: int = Query(100, description="Her CSV kaydı için işlenecek sayfa sayısı (varsayılan 100)"),
     output_file: Optional[str] = Query(None, description="Çıktı CSV dosyası yolu")
@@ -94,7 +160,7 @@ async def generate_embeddings(
         if num_pages_for_this_chunk <= 0:
             continue
 
-        task = generate_embeddings_task.delay(
+        task = generate_embedding.delay(
             start_page=chunk_start_page,
             max_pages=num_pages_for_this_chunk,
             batch_size=batch_size,
@@ -116,74 +182,4 @@ async def generate_embeddings(
              "output_file": output_file,
              "max_pages_to_process_overall_env": max_pages_to_process_overall if max_pages_to_process_overall is not None else "all (env not set or invalid)"
         }
-    }
-
-
-async def generate_single_embedding(
-    product_id: int = Path(..., description="Embedding oluşturulacak ürün ID'si")
-):
-    """
-    Belirli bir ürün için embedding oluşturmayı tetikleyen handler.
-    
-    Args:
-        product_id: Embedding oluşturulacak ürün ID'si
-        
-    Returns:
-        dict: Görev bilgileri
-    """
-    # Celery görevini sıraya al
-    task = generate_single_embedding_task.delay(product_id=product_id)
-    
-    return {
-        "task_id": task.id,
-        "status": "queued",
-        "product_id": product_id,
-        "message": f"Ürün ID {product_id} için embedding oluşturma görevi başlatıldı."
-    }
-
-
-async def update_single_embedding(
-    product_id: int = Path(..., description="Embedding'i güncellenecek ürün ID'si")
-):
-    """
-    Belirli bir ürün için embedding'i güncellemeyi tetikleyen handler.
-    Varolan embedding'i siler ve yeniden oluşturur.
-    
-    Args:
-        product_id: Embedding'i güncellenecek ürün ID'si
-        
-    Returns:
-        dict: Görev bilgileri
-    """
-    # Celery görevini sıraya al
-    task = update_single_embedding_task.delay(product_id=product_id)
-    
-    return {
-        "task_id": task.id,
-        "status": "queued",
-        "product_id": product_id,
-        "message": f"Ürün ID {product_id} için embedding güncelleme görevi başlatıldı."
-    }
-
-
-async def delete_single_embedding(
-    product_id: int = Path(..., description="Embedding'i silinecek ürün ID'si")
-):
-    """
-    Belirli bir ürün için embedding'i silmeyi tetikleyen handler.
-    
-    Args:
-        product_id: Embedding'i silinecek ürün ID'si
-        
-    Returns:
-        dict: Görev bilgileri
-    """
-    # Celery görevini sıraya al
-    task = delete_single_embedding_task.delay(product_id=product_id)
-    
-    return {
-        "task_id": task.id,
-        "status": "queued",
-        "product_id": product_id,
-        "message": f"Ürün ID {product_id} için embedding silme görevi başlatıldı."
     }
