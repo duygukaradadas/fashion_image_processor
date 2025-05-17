@@ -2,15 +2,17 @@ import os
 
 from celery import Celery
 
-# Redis connection settings
-redis_host = os.getenv('REDIS_HOST', 'redis')
-redis_port = os.getenv('REDIS_PORT', 6379)
+# Default DSNs if not provided by environment variables
+DEFAULT_REDIS_DSN = 'redis://redis:6379/0'
 
-# Celery configuration
+# Celery configuration using DSNs
+broker_dsn = os.getenv('CELERY_BROKER_DSN', DEFAULT_REDIS_DSN)
+backend_dsn = os.getenv('CELERY_BACKEND_DSN', broker_dsn) # Default backend to broker DSN
+
 celery_app = Celery(
     'fashion_processor',
-    broker=f'redis://{redis_host}:{redis_port}/0',
-    backend=f'redis://{redis_host}:{redis_port}/0'
+    broker=broker_dsn,
+    backend=backend_dsn
 )
 
 celery_app.conf.update(

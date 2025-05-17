@@ -69,7 +69,7 @@ class QdrantService:
             self.client.upsert(
                 collection_name="fashion_products",
                 points=[{
-                    "id": str(product_id),
+                    "id": product_id,
                     "vector": embedding
                 }]
             )
@@ -92,7 +92,7 @@ class QdrantService:
         try:
             result = self.client.retrieve(
                 collection_name="fashion_products",
-                ids=[str(product_id)]
+                ids=[product_id]
             )
             if result and result[0].vector is not None:
                 return np.array(result[0].vector, dtype=np.float32)
@@ -117,20 +117,14 @@ class QdrantService:
         result_dict = {}
         
         try:
-            # Convert product IDs to strings for Qdrant
-            str_ids = [str(pid) for pid in product_ids]
-            
-            # Retrieve vectors from Qdrant
             results = self.client.retrieve(
                 collection_name="fashion_products",
-                ids=str_ids,
+                ids=product_ids,
                 with_vectors=True
             )
             
-            # Create a mapping of id -> vector
-            retrieved_vectors = {int(item.id): item.vector for item in results}
+            retrieved_vectors = {item.id: item.vector for item in results}
             
-            # Map each requested ID to its vector or None
             for pid in product_ids:
                 if pid in retrieved_vectors:
                     result_dict[pid] = np.array(retrieved_vectors[pid], dtype=np.float32)
@@ -141,7 +135,6 @@ class QdrantService:
             
         except Exception as e:
             print(f"Qdrant'tan toplu alma hatası: {str(e)}")
-            # Still provide a result for each ID, but with None values
             return {pid: None for pid in product_ids}
     
     def save_embeddings_batch(self, product_ids: List[int], embeddings: Union[np.ndarray, List[List[float]]]) -> bool:
@@ -160,12 +153,11 @@ class QdrantService:
             
         try:
             points = []
-            for i, product_id in enumerate(product_ids):
-                # Convert to list if it's a numpy array
+            for i, product_id_val in enumerate(product_ids):
                 embedding_list = embeddings[i].tolist() if isinstance(embeddings[i], np.ndarray) else embeddings[i]
                 
                 points.append({
-                    "id": str(product_id),
+                    "id": product_id_val,
                     "vector": embedding_list
                 })
                 
@@ -194,7 +186,7 @@ class QdrantService:
             self.client.delete(
                 collection_name="fashion_products",
                 points_selector=models.PointIdsList(
-                    points=[str(product_id)]
+                    points=[product_id]
                 )
             )
             print(f"Ürün {product_id} için embedding Qdrant'tan silindi.")
@@ -215,18 +207,16 @@ class QdrantService:
             List of similar product IDs and similarity scores
         """
         try:
-            # Get the embedding for the query product (from Qdrant)
             search_result = self.client.search(
                 collection_name="fashion_products",
-                query_vector_id=str(product_id),
-                limit=top_n + 1  # +1 because we'll filter out the query product itself
+                query_vector_id=product_id,
+                limit=top_n + 1
             )
             
-            # Filter out the query product
             similar_products = []
             for result in search_result:
-                result_id = int(result.id)
-                if result_id != product_id:  # Skip the query product
+                result_id = result.id if isinstance(result.id, int) else int(result.id)
+                if result_id != product_id:
                     similar_products.append({
                         'id': result_id,
                         'similarity': result.score
