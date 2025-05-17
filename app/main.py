@@ -1,9 +1,13 @@
-from fastapi import FastAPI, BackgroundTasks, Query
+from fastapi import FastAPI, Query
 from app.handlers import home_handler, embedding_handler
 from app.tasks.ping import ping
 from app.services.redis_service import RedisService
+from app.middleware import APIKeyAuthMiddleware
 
 app = FastAPI()
+
+# Add the authentication middleware
+app.add_middleware(APIKeyAuthMiddleware)
 
 app.get("/")(home_handler.root)
 
