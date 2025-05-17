@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Tuple
 from app.resnet.model import ResNetEmbedder
 from app.services.api_client import ApiClient
 from app.services.redis_service import RedisService
-
+from app.services.qdrant_service import QdrantService
 
 class EmbeddingService:
     """
@@ -27,7 +27,7 @@ class EmbeddingService:
         self.api_client = ApiClient(base_url=api_base_url)
         self.model = ResNetEmbedder()
         self.redis_service = RedisService()
-
+        self.qdrant_service = QdrantService()
         
     async def get_embedding_for_product(self, product_id: int) -> Tuple[int, np.ndarray]:
         """
@@ -42,26 +42,38 @@ class EmbeddingService:
         Raises:
             Exception: If image retrieval or embedding generation fails
         """
-        # Önce Redis'te kontrol et
-        existing_embedding = self.redis_service.get_embedding(product_id)
+        # First check in Qdrant
+        existing_embedding = self.qdrant_service.get_embedding(product_id)
+        
         if existing_embedding is not None:
-            print(f"Ürün {product_id} için Redis'ten embedding alındı.")
+            print(f"Ürün {product_id} için Qdrant'tan embedding alındı.")
             return (product_id, existing_embedding)
         
-        # Get the product image
+        # If not in Qdrant, try Redis as fallback (for backward compatibility during migration)
+        existing_embedding = self.redis_service.get_embedding(product_id)
+        
+        if existing_embedding is not None:
+            print(f"Ürün {product_id} için Redis'ten embedding alındı.")
+            # Save to Qdrant for next time
+            self.qdrant_service.save_embedding(product_id, existing_embedding.tolist())
+            return (product_id, existing_embedding)
+        
+        # Get the product image if not found in either storage
         image_data = await self.api_client.get_product_image(product_id=product_id)
         
         # Generate embedding
         embedding = self.model.get_embedding(image_data)
         
-        # Save to Redis
+        # Save to Qdrant        
+        # After generating embedding
         self.redis_service.save_embedding(product_id, embedding.tolist())
+        self.qdrant_service.save_embedding(product_id, embedding.tolist())
         
         return (product_id, embedding)
     
     async def update_embedding_for_product(self, product_id: int) -> Tuple[int, np.ndarray]:
         """
-        Force update embedding for a single product, even if it already exists in Redis.
+        Force update embedding for a single product, even if it already exists.
         
         Args:
             product_id: ID of the product
@@ -79,14 +91,35 @@ class EmbeddingService:
             # Generate embedding
             embedding = self.model.get_embedding(image_data)
             
-            # Save to Redis, overwriting any existing embedding
+            # Save to Qdrant, overwriting any existing embedding
+            self.qdrant_service.save_embedding(product_id, embedding.tolist())
+            
+            # After generating embedding
             self.redis_service.save_embedding(product_id, embedding.tolist())
+            self.qdrant_service.save_embedding(product_id, embedding.tolist())
             
             print(f"Ürün {product_id} için embedding güncellendi.")
             return (product_id, embedding)
         except Exception as e:
             print(f"Ürün {product_id} için embedding güncellenirken hata: {str(e)}")
             raise
+    
+    async def delete_embedding_for_product(self, product_id: int) -> bool:
+        """
+        Delete embedding for a single product.
+        
+        Args:
+            product_id: ID of the product
+            
+        Returns:
+            bool: Whether deletion was successful
+        """
+        # Delete from both storages for consistency during migration
+        qdrant_success = self.qdrant_service.delete_embedding(product_id)
+        redis_success = self.redis_service.delete_embedding(product_id)
+        
+        # Consider operation successful if at least one storage deletion worked
+        return qdrant_success or redis_success
     
     async def generate_embeddings_for_products(
         self, 
