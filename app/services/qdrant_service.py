@@ -70,10 +70,11 @@ class QdrantService:
                 collection_name="fashion_products",
                 points=[{
                     "id": product_id,
-                    "vector": embedding
+                    "vector": embedding,
+                    "payload": {"product_id": product_id}
                 }]
             )
-            print(f"Ürün {product_id} için embedding Qdrant'a kaydedildi.")
+            print(f"Ürün {product_id} için embedding Qdrant'a payload ile kaydedildi.")
             return True
         except Exception as e:
             print(f"Qdrant'a kaydetme hatası: {str(e)}")
@@ -156,17 +157,30 @@ class QdrantService:
             for i, product_id_val in enumerate(product_ids):
                 embedding_list = embeddings[i].tolist() if isinstance(embeddings[i], np.ndarray) else embeddings[i]
                 
+                # Basic check for embedding format, can be enhanced
+                if not isinstance(embedding_list, list) or not embedding_list:
+                    print(f"[WARNING] Invalid or empty embedding for product_id {product_id_val}. Skipping.")
+                    continue
+                if not all(isinstance(x, (float, int)) for x in embedding_list):
+                    print(f"[WARNING] Embedding for product_id {product_id_val} contains non-float/int values. Skipping.")
+                    continue
+
                 points.append({
                     "id": product_id_val,
-                    "vector": embedding_list
+                    "vector": embedding_list,
+                    "payload": {"product_id": product_id_val}  # Added payload
                 })
-                
+            
+            if not points: 
+                print("[INFO] No valid points to save in batch after filtering.")
+                return False # Or True, depending on whether this is considered a success
+
             self.client.upsert(
                 collection_name="fashion_products",
                 points=points
             )
             
-            print(f"{len(points)} ürün için embeddingler Qdrant'a kaydedildi.")
+            print(f"{len(points)} ürün için embeddingler Qdrant'a payload ile kaydedildi.")
             return True
         except Exception as e:
             print(f"Qdrant'a toplu kaydetme hatası: {str(e)}")
@@ -212,8 +226,9 @@ class QdrantService:
                 query_vector_id=product_id,
                 limit=top_n + 1
             )
-            
+            print(f"Qdrant benzer ürün arama sonucu: {search_result}")
             similar_products = []
+
             for result in search_result:
                 result_id = result.id if isinstance(result.id, int) else int(result.id)
                 if result_id != product_id:
