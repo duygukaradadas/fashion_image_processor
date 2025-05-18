@@ -1,5 +1,7 @@
 # Fashion Image Processor
 
+> **Note:** All endpoints are now public and do not require authentication.
+
 A microservice for generating and managing image embeddings for fashion products using ResNet50. The service provides similarity search capabilities based on visual features extracted from product images.
 
 ## Features
@@ -9,12 +11,6 @@ A microservice for generating and managing image embeddings for fashion products
 - RESTful API for similarity search
 - Asynchronous processing with Celery
 - Docker support for easy deployment
-
-## Prerequisites
-
-- Docker and Docker Compose
-- Python 3.8+
-- Redis (for Celery)
 
 ## Quick Start
 
@@ -51,48 +47,74 @@ This will start:
 
 1. Check if a product has embeddings:
 ```bash
-curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/check/20
+curl http://localhost:8000/embeddings/check/20
 ```
 
 2. Get list of products with embeddings:
 ```bash
-curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/products
+curl http://localhost:8000/embeddings/products
 ```
 
 3. Get similar products with adjusted threshold:
 ```bash
-curl -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/similar-products/20?top_n=10&score_threshold=0.001"
+curl "http://localhost:8000/similar-products/20?top_n=10&score_threshold=0.001"
 ```
 
 4. Check total number of embeddings:
 ```bash
-curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/count
+curl http://localhost:8000/embeddings/count
 ```
 
 5. Generate embedding for a single product:
 ```bash
-curl -X POST -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/generate/20"
+curl -X POST http://localhost:8000/embeddings/product/20
 ```
 
 6. Update embedding for a product:
 ```bash
-curl -X PUT -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/update/20"
+curl -X PUT http://localhost:8000/embeddings/product/20
 ```
 
 7. Delete embedding for a product:
 ```bash
-curl -X DELETE -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/delete/20"
+curl -X DELETE http://localhost:8000/embeddings/product/20
 ```
 
 8. Generate embeddings for multiple products:
 ```bash
-curl -X POST -H "Authorization: Bearer fashion-api-token-2025" -H "Content-Type: application/json" -d '{"product_ids": [20, 29, 14]}' "http://localhost:8000/embeddings/generate-batch"
+curl -X POST -H "Content-Type: application/json" -d '{"product_ids": [20, 29, 14]}' http://localhost:8000/embeddings/generate-batch
 ```
 
 9. Generate embeddings for all products (paginated):
 ```bash
-curl -X POST -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/generate-all?start_page=1&batch_size=10"
+curl -X POST http://localhost:8000/embeddings/generate-all?start_page=1&batch_size=10
 ```
+
+### Find Similar Products by Image Upload
+
+**POST** `/similar-products/upload`
+
+- **Description:** Upload an image to get similar products.
+- **Request:**  
+  - Form-data with key `image` (the image file)
+  - Optional query params: `top_n`, `score_threshold`
+- **Example:**
+  ```bash
+  curl -X POST -F "image=@/path/to/image.jpg" "http://localhost:8000/similar-products/upload?top_n=5&score_threshold=0.001"
+  ```
+- **Response:**
+  ```json
+  {
+    "similar_products": [
+      {
+        "id": 23,
+        "similarity_score": 1.0,
+        "image_url": "https://fashion.aknevrnky.dev/api/products/23/image"
+      },
+      ...
+    ]
+  }
+  ```
 
 ### Example Responses
 
@@ -131,78 +153,7 @@ curl -X POST -H "Authorization: Bearer fashion-api-token-2025" "http://localhost
 
 ### Notes on Endpoints
 
-- All endpoints require authentication using the `fashion-api-token-2025` token
+- All endpoints are now public and do not require authentication.
 - Similarity search uses L2 distance, where lower values indicate higher similarity
 - The recommended similarity threshold is 0.001
-- Batch operations are processed asynchronously using Celery
-- The generate-all endpoint processes products in batches to manage memory usage
-
-## Migration from Qdrant to FAISS
-
-We migrated from Qdrant to FAISS for the following reasons:
-1. Simpler deployment (no need for a separate vector database)
-2. Better performance for our use case
-3. Easier integration with Python
-4. Lower resource requirements
-
-The migration process:
-1. Removed Qdrant dependencies
-2. Implemented FAISS service for similarity search
-3. Updated the API endpoints to use FAISS
-4. Verified the results with the commands above
-
-## Development
-
-1. Create a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\activate  # Windows
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run Celery worker:
-```bash
-celery -A app.celery_config.celery_app worker --loglevel=info
-```
-
-## Architecture
-
-The service consists of several components:
-- FastAPI application for HTTP endpoints
-- ResNet50 model for feature extraction
-- FAISS for fast vector similarity search
-- Redis for Celery task queue
-- Celery for background task processing
-
-## Configuration
-
-Environment variables:
-- `API_BASE_URL`: Base URL for the fashion API
-- `REDIS_HOST`: Redis host
-- `REDIS_PORT`: Redis port
-- `API_AUTH_TOKEN`: Authentication token for the fashion API
-
-## License
-
-MIT License
-
-# Create the client
-client = ApiClient(base_url="https://fashion.aknevrnky.dev")
-
-# Get image bytes by product ID
-image_data = await client.get_product_image(product_id=1)
-
-# Or directly from a URL
-image_data = await client.get_product_image(image_url="https://fashion.aknevrnky.dev/storage/products/10000.jpg")
-
-# Process with PIL/Pillow
-from PIL import Image
-import io
-image = Image.open(io.BytesIO(image_data))
-# Now the image can be processed for training
+- Batch operations are processed asynchronously using Celery 
