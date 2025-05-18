@@ -9,18 +9,16 @@ services:
       - 'host.docker.internal:host-gateway'
     volumes:
       - .:/app
+      - model-cache:/root/.cache/torch/hub
     ports:
-      - "4000:8000"
+      - "8000:8000"
     environment:
       - API_BASE_URL=https://fashion.aknevrnky.dev
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - API_AUTH_TOKEN=fashion-api-token-2025
     depends_on:
       - redis
-      - qdrant
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.image-processor.rule=Host(`${APP_HOST}`)"
@@ -45,13 +43,11 @@ services:
           memory: 1G
     depends_on:
       - redis
-      - qdrant
     volumes:
       - .:/app
+      - model-cache:/root/.cache/torch/hub
     environment:
       - API_BASE_URL=https://fashion.aknevrnky.dev
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     networks:
@@ -75,29 +71,10 @@ services:
     labels:
       - "traefik.enable=false"
 
-  qdrant:
-    image: qdrant/qdrant
-    volumes:
-      - 'image-processor-qdrant:/qdrant/storage'
-    networks:
-      - fashion_network
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    environment:
-      - RUST_LOG=info
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    labels:
-      - "traefik.enable=false"
-
 networks:
   fashion_network:
     external: true
 
 volumes:
   image-processor-redis:
-  image-processor-qdrant:
+  model-cache:

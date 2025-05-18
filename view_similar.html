@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Similar Products to Product 20</title>
+    <style>
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            padding: 20px;
+        }
+        .product-item {
+            text-align: center;
+        }
+        .product-image {
+            max-width: 200px;
+            height: auto;
+            border: 1px solid #ccc;
+        }
+        .product-info {
+            margin-top: 10px;
+            font-family: Arial, sans-serif;
+        }
+        .score {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+    <script>
+        // Function to load image with authentication
+        function loadImageWithAuth(imgElement, productId) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `https://fashion.aknevrnky.dev/api/products/${productId}/image`, true);
+            xhr.setRequestHeader('Authorization', 'Bearer fashion-api-token-2025');
+            xhr.responseType = 'blob';
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    const url = URL.createObjectURL(xhr.response);
+                    imgElement.src = url;
+                } else {
+                    imgElement.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNlZWUiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RW1wdHkgSW1hZ2U8L3RleHQ+PC9zdmc+';
+                }
+            };
+            
+            xhr.onerror = function() {
+                imgElement.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiNlZWUiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2IiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+RXJyb3IgTG9hZGluZyBJbWFnZTwvdGV4dD48L3N2Zz4=';
+            };
+            
+            xhr.send();
+        }
+
+        // Load all images when the page loads
+        window.onload = function() {
+            const images = document.getElementsByClassName('product-image');
+            for (let img of images) {
+                const productId = img.alt.split(' ')[1];
+                loadImageWithAuth(img, productId);
+            }
+        };
+    </script>
+</head>
+<body>
+    <div class="product-grid">
+        <div class="product-item">
+            <img class="product-image" alt="Product 20">
+            <div class="product-info">
+                <div>Product 20</div>
+                <div class="score">Score: 1.0</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 29">
+            <div class="product-info">
+                <div>Product 29</div>
+                <div class="score">Score: 0.00455</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 14">
+            <div class="product-info">
+                <div>Product 14</div>
+                <div class="score">Score: 0.00440</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 27">
+            <div class="product-info">
+                <div>Product 27</div>
+                <div class="score">Score: 0.00411</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 7">
+            <div class="product-info">
+                <div>Product 7</div>
+                <div class="score">Score: 0.00406</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 6">
+            <div class="product-info">
+                <div>Product 6</div>
+                <div class="score">Score: 0.00405</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 41">
+            <div class="product-info">
+                <div>Product 41</div>
+                <div class="score">Score: 0.00397</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 32">
+            <div class="product-info">
+                <div>Product 32</div>
+                <div class="score">Score: 0.00385</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 33">
+            <div class="product-info">
+                <div>Product 33</div>
+                <div class="score">Score: 0.00384</div>
+            </div>
+        </div>
+        <div class="product-item">
+            <img class="product-image" alt="Product 23">
+            <div class="product-info">
+                <div>Product 23</div>
+                <div class="score">Score: 0.00380</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

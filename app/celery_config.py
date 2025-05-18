@@ -21,13 +21,26 @@ celery_app.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
-    broker_connection_retry_on_startup=True
+    broker_connection_retry_on_startup=True,
+    
+    # Performance optimizations
+    worker_prefetch_multiplier=1,  # Disable prefetching to prevent worker from getting too many tasks
+    worker_max_tasks_per_child=1000,  # Restart worker after processing 1000 tasks to prevent memory leaks
+    task_time_limit=300,  # 5 minutes timeout for tasks
+    task_soft_time_limit=240,  # 4 minutes soft timeout
+    worker_concurrency=16,  # Increase number of worker processes
+    
+    # Task routing
+    task_routes={
+        "generate_embedding": {"queue": "celery"},
+        "generate_embeddings_batch": {"queue": "celery"},
+        "delete_embedding": {"queue": "celery"},
+        "app.tasks.ping.ping": {"queue": "celery"},
+    },
+    
+    # Task retry settings
+    task_acks_late=True,  # Only acknowledge task after it's completed
+    task_reject_on_worker_lost=True,  # Requeue task if worker dies
+    task_default_retry_delay=30,  # Wait 30 seconds before retrying
+    task_max_retries=3,  # Maximum number of retries
 )
-
-# Updated task routes to use new task names
-celery_app.conf.task_routes = {
-    "generate_embedding": {"queue": "celery"},
-    "generate_embeddings_batch": {"queue": "celery"},
-    "delete_embedding": {"queue": "celery"},
-    "app.tasks.ping.ping": {"queue": "celery"},
-}

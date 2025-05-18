@@ -18,7 +18,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Allow health check endpoint without authentication
-        if request.url.path in ["/api/v1/embeddings/health", "/health"]:
+        if request.url.path in ["/embeddings/health", "/health"]:
             return await call_next(request)
 
         if not self.api_key:

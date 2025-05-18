@@ -3,6 +3,13 @@ from typing import Dict, List, Optional, Any
 import httpx
 from pydantic import BaseModel
 from urllib.parse import urljoin
+import asyncio
+from tenacity import retry, stop_after_attempt, wait_exponential
+import aiohttp
+import logging
+from dataclasses import dataclass
+from functools import lru_cache
+import time
 
 
 class ProductResponse(BaseModel):
@@ -50,105 +57,133 @@ class ProductsListResponse(BaseModel):
     meta: PaginationMeta
 
 
+@dataclass
+class Product:
+    id: int
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    image_url: Optional[str] = None
+
+
+@dataclass
+class PaginatedResponse:
+    data: List[Product]
+    meta: Dict[str, Any]
+    links: Dict[str, Any]
+
+
 class ApiClient:
     """Client for connecting to the product API"""
     
-    def __init__(self, base_url: str = None):
+    def __init__(self, base_url: Optional[str] = None):
         """
         Initialize the API client.
         
         Args:
             base_url: Base URL for the API. Defaults to environment variable API_BASE_URL 
         """
-        self.base_url = base_url or os.getenv('API_BASE_URL')
+        self.base_url = base_url or "https://fashion.aknevrnky.dev/api"
+        self.session = None
+        self.logger = logging.getLogger(__name__)
+        self._semaphore = asyncio.Semaphore(50)  # Increased from 100 to 50 for better control
+        self._cache = {}
+        self._cache_ttl = 300  # 5 minutes cache TTL
         
-    async def get_products(self, page: int = 1) -> ProductsListResponse:
-        """
-        Fetch products from the API.
-        
-        Args:
-            page: Page number to fetch. Defaults to 1.
-            
-        Returns:
-            A ProductsListResponse object containing product data and pagination info.
-            
-        Raises:
-            httpx.HTTPError: If an HTTP error occurs
-            ValueError: If the response cannot be parsed
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/api/products",
-                params={"page": page}
+    async def _ensure_session(self):
+        """Ensure that a session exists and is valid."""
+        if self.session is None or self.session.closed:
+            # Configure connection pooling with optimized settings
+            connector = aiohttp.TCPConnector(
+                limit=50,  # Reduced from 100 to 50 for better control
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                force_close=False,
+                enable_cleanup_closed=True,
+                ssl=False  # Disable SSL verification for better performance
             )
-            response.raise_for_status()
-            
-            data = response.json()
-            return ProductsListResponse(**data)
-            
-    async def get_product(self, product_id: int) -> ProductResponse:
-        """
-        Fetch a single product by ID.
-        
-        Args:
-            product_id: The ID of the product to fetch
-            
-        Returns:
-            A ProductResponse object containing product data
-            
-        Raises:
-            httpx.HTTPError: If an HTTP error occurs
-            ValueError: If the response cannot be parsed
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/api/products/{product_id}"
+            timeout = aiohttp.ClientTimeout(total=10)  # Reduced from 30 to 10 seconds
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={
+                    "accept": "application/json",
+                    "Authorization": "Bearer fashion-api-token-2025"
+                }
             )
-            response.raise_for_status()
-            
-            data = response.json()
-            if "data" in data:
-                return ProductResponse(**data["data"])
-            return ProductResponse(**data)
-            
-    async def get_product_image(self, product_id: int = None, image_url: str = None) -> bytes:
-        """
-        Fetch the image data for a product.
-        This method is suitable for training services that need the raw image data.
         
-        Args:
-            product_id: The ID of the product to fetch the image for. 
-                        If provided, the product details will be fetched first to get the image URL.
-            image_url: Direct URL to the image. If provided, product_id is ignored.
+    async def __aenter__(self):
+        await self._ensure_session()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session and not self.session.closed:
+            await self.session.close()
+            self.session = None
             
-        Returns:
-            Bytes containing the image data that can be used directly with image processing 
-            libraries like PIL/Pillow, OpenCV, or TensorFlow.
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        reraise=True
+    )
+    async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict:
+        """Make an HTTP request with retry logic and connection pooling."""
+        await self._ensure_session()
             
-        Raises:
-            ValueError: If neither product_id nor image_url is provided
-            httpx.HTTPError: If an HTTP error occurs
-        """
-        if not product_id and not image_url:
-            raise ValueError("Either product_id or image_url must be provided")
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        
+        # Check cache
+        cache_key = f"{method}:{url}"
+        if cache_key in self._cache:
+            cache_time, cache_data = self._cache[cache_key]
+            if time.time() - cache_time < self._cache_ttl:
+                return cache_data
+        
+        async with self._semaphore:  # Limit concurrent connections
+            try:
+                async with self.session.request(method, url, **kwargs) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    
+                    # Cache successful responses
+                    self._cache[cache_key] = (time.time(), data)
+                    return data
+            except aiohttp.ClientError as e:
+                self.logger.error(f"API request failed: {str(e)}")
+                raise
             
-        if not image_url and product_id:
-            # Get the product details to retrieve the image URL
-            product = await self.get_product(product_id)
-            image_url = product.image_url
+    async def get_products(self, page: int = 1) -> PaginatedResponse:
+        """Get products with pagination and caching."""
+        data = await self._make_request("GET", f"products?page={page}")
+        return PaginatedResponse(
+            data=[Product(**p) for p in data["data"]],
+            meta=data["meta"],
+            links=data["links"]
+        )
+        
+    async def get_product_image(self, product_id: int) -> Optional[bytes]:
+        """Get product image with retry logic and connection pooling."""
+        try:
+            # First get the product data to get the image_url
+            product_data = await self._make_request("GET", f"products/{product_id}")
+            if not product_data or "data" not in product_data or "image_url" not in product_data["data"]:
+                self.logger.error(f"No image URL found for product {product_id}")
+                return None
+                
+            image_url = product_data["data"]["image_url"]
             
-        # Handle relative URLs by prepending the base URL
-        if image_url.startswith('/'):
-            # Remove trailing slash from base_url if present
-            base = self.base_url.rstrip('/')
-            # Remove leading slash from image_url
-            img = image_url.lstrip('/')
-            # Join with a single slash
-            image_url = f"{base}/{img}"
+            # Now fetch the image from the image_url
+            await self._ensure_session()
+            async with self._semaphore:  # Limit concurrent connections
+                async with self.session.get(image_url) as response:
+                    if response.status == 200:
+                        return await response.read()
+                    self.logger.error(f"Failed to fetch image from {image_url}, status: {response.status}")
+                    return None
+        except Exception as e:
+            self.logger.error(f"Failed to get image for product {product_id}: {str(e)}")
+            return None
             
-        async with httpx.AsyncClient() as client:
-            print(f"Fetching image from: {image_url}")  # Debug log
-            response = await client.get(image_url)
-            response.raise_for_status()
-            
-            return response.content
+    def clear_cache(self):
+        """Clear the response cache."""
+        self._cache.clear()

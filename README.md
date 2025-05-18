@@ -5,8 +5,8 @@ A microservice for generating and managing image embeddings for fashion products
 ## Features
 
 - Generate embeddings from fashion product images using ResNet50
-- Store embeddings in Redis for fast similarity search
-- RESTful API for embedding generation and similarity search
+- Store embeddings in FAISS for fast similarity search
+- RESTful API for similarity search
 - Asynchronous processing with Celery
 - Docker support for easy deployment
 
@@ -14,7 +14,7 @@ A microservice for generating and managing image embeddings for fashion products
 
 - Docker and Docker Compose
 - Python 3.8+
-- Redis
+- Redis (for Celery)
 
 ## Quick Start
 
@@ -35,47 +35,121 @@ docker compose up -d
 ```
 
 This will start:
-- FastAPI application on port 4000
+- FastAPI application on port 8000
 - Redis on port 6379
 - Celery worker for background tasks
 
-## API Endpoints
+## Working with Similarity Search
 
-### Generate Embeddings for All Products
-```http
-POST /embeddings/generate
-```
-Generates embeddings for all products in the database.
+### Understanding Similarity Scores
+- The system uses L2 distance for similarity, where lower values indicate higher similarity
+- Similarity scores are typically very small (around 0.004)
+- The default threshold of 0.1 was too high, filtering out all similar products
+- We found that a threshold of 0.001 works well for finding similar products
 
-### Generate Embedding for a Specific Product
-```http
-POST /embeddings/product/{product_id}
-```
-Generates an embedding only for the product with the given product ID.
+### Verified Working Endpoints
 
-### Update Embedding for a Specific Product
-```http
-PUT /embeddings/product/{product_id}
+1. Check if a product has embeddings:
+```bash
+curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/check/20
 ```
-Updates the embedding for the product with the given product ID.
 
-### Delete Embedding for a Specific Product
-```http
-DELETE /embeddings/product/{product_id}
+2. Get list of products with embeddings:
+```bash
+curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/products
 ```
-Deletes the embedding for the product with the given product ID.
 
-### Find Similar Products
-```http
-GET /similar-products/{product_id}?top_n=5
+3. Get similar products with adjusted threshold:
+```bash
+curl -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/similar-products/20?top_n=10&score_threshold=0.001"
 ```
-Returns the most similar products based on image embeddings.
 
-### Health Check
-```http
-GET /ping
+4. Check total number of embeddings:
+```bash
+curl -H "Authorization: Bearer fashion-api-token-2025" http://localhost:8000/embeddings/count
 ```
-Returns the service status.
+
+5. Generate embedding for a single product:
+```bash
+curl -X POST -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/generate/20"
+```
+
+6. Update embedding for a product:
+```bash
+curl -X PUT -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/update/20"
+```
+
+7. Delete embedding for a product:
+```bash
+curl -X DELETE -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/delete/20"
+```
+
+8. Generate embeddings for multiple products:
+```bash
+curl -X POST -H "Authorization: Bearer fashion-api-token-2025" -H "Content-Type: application/json" -d '{"product_ids": [20, 29, 14]}' "http://localhost:8000/embeddings/generate-batch"
+```
+
+9. Generate embeddings for all products (paginated):
+```bash
+curl -X POST -H "Authorization: Bearer fashion-api-token-2025" "http://localhost:8000/embeddings/generate-all?start_page=1&batch_size=10"
+```
+
+### Example Responses
+
+1. Similar Products Response:
+```json
+{
+  "similar_products": [
+    {"id": 20, "similarity_score": 1.0, "image_url": "https://fashion.aknevrnky.dev/api/products/20/image"},
+    {"id": 29, "similarity_score": 0.00455, "image_url": "https://fashion.aknevrnky.dev/api/products/29/image"},
+    {"id": 14, "similarity_score": 0.00440, "image_url": "https://fashion.aknevrnky.dev/api/products/14/image"}
+  ]
+}
+```
+
+2. Task Response (for POST/PUT/DELETE operations):
+```json
+{
+  "task_id": "task-uuid-here",
+  "status": "queued"
+}
+```
+
+3. Products with Embeddings Response:
+```json
+{
+  "products": [1, 2, 3, 4, 5]
+}
+```
+
+4. Embedding Count Response:
+```json
+{
+  "count": 5
+}
+```
+
+### Notes on Endpoints
+
+- All endpoints require authentication using the `fashion-api-token-2025` token
+- Similarity search uses L2 distance, where lower values indicate higher similarity
+- The recommended similarity threshold is 0.001
+- Batch operations are processed asynchronously using Celery
+- The generate-all endpoint processes products in batches to manage memory usage
+
+## Migration from Qdrant to FAISS
+
+We migrated from Qdrant to FAISS for the following reasons:
+1. Simpler deployment (no need for a separate vector database)
+2. Better performance for our use case
+3. Easier integration with Python
+4. Lower resource requirements
+
+The migration process:
+1. Removed Qdrant dependencies
+2. Implemented FAISS service for similarity search
+3. Updated the API endpoints to use FAISS
+4. Verified the results with the commands above
 
 ## Development
 
@@ -102,47 +176,17 @@ celery -A app.celery_config.celery_app worker --loglevel=info
 The service consists of several components:
 - FastAPI application for HTTP endpoints
 - ResNet50 model for feature extraction
-- Redis for embedding storage
+- FAISS for fast vector similarity search
+- Redis for Celery task queue
 - Celery for background task processing
 
 ## Configuration
 
 Environment variables:
 - `API_BASE_URL`: Base URL for the fashion API
-- `REDIS_URL`: Redis connection URL
-- `CELERY_BROKER_URL`: Celery broker URL
-
-## API Usage Examples
-
-### Generate All Embeddings
-```bash
-curl -X POST "http://localhost:4000/embeddings/generate" \
-  -H "Content-Type: application/json"
-```
-
-### Generate Embedding for a Specific Product
-```bash
-curl -X POST "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Update Embedding for a Specific Product
-```bash
-curl -X PUT "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Delete Embedding for a Specific Product
-```bash
-curl -X DELETE "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Find Similar Products
-```bash
-curl -X GET "http://localhost:4000/similar-products/123?top_n=5" \
-  -H "Content-Type: application/json"
-```
+- `REDIS_HOST`: Redis host
+- `REDIS_PORT`: Redis port
+- `API_AUTH_TOKEN`: Authentication token for the fashion API
 
 ## License
 

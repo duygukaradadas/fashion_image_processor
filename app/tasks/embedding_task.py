@@ -1,9 +1,13 @@
 import asyncio
 from celery import shared_task
-from app.services.qdrant_service import QdrantService
+from app.services.faiss_service import FAISSService
 from app.services.embedding_service import EmbeddingService
 from typing import List, Dict, Optional
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+import logging
+
+logger = logging.getLogger(__name__)
 
 @shared_task
 def generate_embedding(product_id: int) -> Dict:
@@ -40,6 +44,7 @@ def generate_embedding(product_id: int) -> Dict:
                 loop.stop()
             
     except Exception as e:
+        logger.error(f"Error generating embedding for product {product_id}: {str(e)}")
         return {
             "product_id": product_id,
             "success": False,
@@ -47,10 +52,11 @@ def generate_embedding(product_id: int) -> Dict:
         }
 
 @shared_task
-def generate_embeddings_batch(product_ids: List[int]) -> List[Dict]:
+def generate_embeddings_batch(product_ids: List[int], batch_size: int = 20) -> List[Dict]:
     """Generate embeddings for multiple products."""
     results = []
     embedding_service = EmbeddingService()
+    faiss_service = FAISSService()
     
     # Get the current event loop or create a new one
     try:
@@ -60,15 +66,29 @@ def generate_embeddings_batch(product_ids: List[int]) -> List[Dict]:
         asyncio.set_event_loop(loop)
     
     try:
-        # Process products sequentially to avoid overwhelming the API
-        for product_id in product_ids:
-            try:
-                # Run the async operation
-                product_id, embedding = loop.run_until_complete(
-                    embedding_service.generate_embedding(product_id)
-                )
-                
+        # Process products in smaller sub-batches for better memory management
+        for i in range(0, len(product_ids), batch_size):
+            sub_batch = product_ids[i:i + batch_size]
+            logger.info(f"Processing sub-batch {i//batch_size + 1}, products {i+1} to {min(i+batch_size, len(product_ids))}")
+            
+            # Process sub-batch in parallel using asyncio.gather
+            tasks = [embedding_service.generate_embedding(pid) for pid in sub_batch]
+            batch_results = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+            
+            # Collect successful embeddings for batch save
+            successful_embeddings = []
+            successful_ids = []
+            
+            # Process results
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    logger.error(f"Error in batch processing: {str(result)}")
+                    continue
+                    
+                product_id, embedding = result
                 if embedding is not None:
+                    successful_embeddings.append(embedding.tolist())
+                    successful_ids.append(product_id)
                     results.append({
                         "product_id": product_id,
                         "success": True,
@@ -80,12 +100,17 @@ def generate_embeddings_batch(product_ids: List[int]) -> List[Dict]:
                         "success": False,
                         "error": "Failed to generate embedding"
                     })
-            except Exception as e:
-                results.append({
-                    "product_id": product_id,
-                    "success": False,
-                    "error": str(e)
-                })
+            
+            # Save successful embeddings in batch
+            if successful_embeddings:
+                faiss_service.save_embeddings_batch(successful_ids, successful_embeddings)
+            
+            # Small delay between sub-batches to prevent overwhelming the system
+            if i + batch_size < len(product_ids):
+                loop.run_until_complete(asyncio.sleep(0.1))
+                
+    except Exception as e:
+        logger.error(f"Error in batch processing: {str(e)}")
     finally:
         if loop.is_running():
             loop.stop()
@@ -94,16 +119,17 @@ def generate_embeddings_batch(product_ids: List[int]) -> List[Dict]:
 
 @shared_task
 def delete_embedding(product_id: int) -> Dict:
-    """Delete embedding for a single product from Qdrant."""
+    """Delete embedding for a single product from FAISS."""
     try:
-        qdrant_service = QdrantService()
-        success = qdrant_service.delete_embedding(product_id)
+        faiss_service = FAISSService()
+        success = faiss_service.delete_embedding(product_id)
         return {
             "product_id": product_id,
             "success": success,
             "error": None
         }
     except Exception as e:
+        logger.error(f"Error deleting embedding for product {product_id}: {str(e)}")
         return {
             "product_id": product_id,
             "success": False,

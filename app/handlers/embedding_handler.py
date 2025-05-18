@@ -9,8 +9,11 @@ from app.tasks.embedding_task import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.api_client import ApiClient
+import logging
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 @router.post("/generate")
 async def generate_embeddings(product_ids: List[int]):
@@ -75,6 +78,7 @@ async def generate_all_embeddings(
     The work is divided based on CELERY_WORKER_CONCURRENCY environment variable (default 4).
     Total number of pages to process can be limited with MAX_PAGES_OVERALL environment variable.
     """
+    logger.info(f"Starting generate_all_embeddings with start_page={start_page}, batch_size={batch_size}, output_file={output_file}")
     return await generate_embeddings_old(start_page, batch_size, output_file)
 
 async def generate_embeddings_old(
@@ -94,7 +98,7 @@ async def generate_embeddings_old(
     if max_pages_env_str and max_pages_env_str.isdigit():
         max_pages_to_process_overall = int(max_pages_env_str)
     elif max_pages_env_str:
-        print(f"Warning: MAX_PAGES_OVERALL environment variable ('{max_pages_env_str}') is not a valid integer. Processing all pages.")
+        logger.warning(f"MAX_PAGES_OVERALL environment variable ('{max_pages_env_str}') is not a valid integer. Processing all pages.")
 
     celery_concurrency_env_str = os.getenv('CELERY_WORKER_CONCURRENCY')
     num_target_tasks = 4
@@ -103,22 +107,25 @@ async def generate_embeddings_old(
         if parsed_concurrency > 0:
             num_target_tasks = parsed_concurrency
         else:
-            print(f"Warning: CELERY_WORKER_CONCURRENCY ('{celery_concurrency_env_str}') must be positive. Defaulting to {num_target_tasks} tasks.")
+            logger.warning(f"CELERY_WORKER_CONCURRENCY ('{celery_concurrency_env_str}') must be positive. Defaulting to {num_target_tasks} tasks.")
     elif celery_concurrency_env_str:
-        print(f"Warning: CELERY_WORKER_CONCURRENCY ('{celery_concurrency_env_str}') is not a valid integer. Defaulting to {num_target_tasks} tasks.")
+        logger.warning(f"CELERY_WORKER_CONCURRENCY ('{celery_concurrency_env_str}') is not a valid integer. Defaulting to {num_target_tasks} tasks.")
 
     try:
         first_page_data = await api_client.get_products(page=1)
         if not first_page_data.meta:
+            logger.error("API'den sayfa meta verisi alınamadı.")
             raise HTTPException(status_code=500, detail="API'den sayfa meta verisi alınamadı.")
         
-        total_api_pages = first_page_data.meta.last_page
+        total_api_pages = first_page_data.meta['last_page']
     except Exception as e:
+        logger.error(f"API'ye bağlanırken veya ilk sayfa alınırken hata: {str(e)}")
         raise HTTPException(status_code=502, detail=f"API'ye bağlanırken veya ilk sayfa alınırken hata: {str(e)}")
 
     effective_start_page = start_page
     
     if effective_start_page > total_api_pages:
+        logger.warning(f"Başlangıç sayfası ({effective_start_page}) toplam API sayfasından ({total_api_pages}) büyük. İşlem yapılmadı.")
         return {
             "message": f"Başlangıç sayfası ({effective_start_page}) toplam API sayfasından ({total_api_pages}) büyük. İşlem yapılmadı.",
             "task_ids": []
@@ -132,6 +139,7 @@ async def generate_embeddings_old(
         num_pages_to_actually_process = pages_from_start
         
     if num_pages_to_actually_process <= 0:
+        logger.warning("İşlenecek sayfa sayısı 0 veya daha az. İşlem yapılmadı.")
         return {
             "message": "İşlenecek sayfa sayısı 0 veya daha az. İşlem yapılmadı.",
             "task_ids": []
@@ -147,12 +155,10 @@ async def generate_embeddings_old(
     
     for i in range(actual_num_dispatch_tasks):
         chunk_start_page = effective_start_page + (i * pages_per_task)
-        
         if chunk_start_page > total_api_pages:
             break
 
         num_pages_for_this_chunk = min(pages_per_task, total_api_pages - chunk_start_page + 1)
-        
         processed_so_far_not_including_this_chunk = i * pages_per_task
         remaining_pages_to_assign = num_pages_to_actually_process - processed_so_far_not_including_this_chunk
         num_pages_for_this_chunk = min(num_pages_for_this_chunk, remaining_pages_to_assign)
@@ -160,14 +166,16 @@ async def generate_embeddings_old(
         if num_pages_for_this_chunk <= 0:
             continue
 
-        task = generate_embedding.delay(
-            start_page=chunk_start_page,
-            max_pages=num_pages_for_this_chunk,
-            batch_size=batch_size,
-            output_file=output_file
-        )
-        task_ids.append(task.id)
+        all_product_ids = []
+        for page in range(chunk_start_page, chunk_start_page + num_pages_for_this_chunk):
+            products = await api_client.get_products(page=page)
+            all_product_ids.extend([p.id for p in products.data])
+
+        if all_product_ids:
+            task = generate_embeddings_batch.delay(all_product_ids)
+            task_ids.append(task.id)
         
+    logger.info(f"{len(task_ids)} adet embedding oluşturma görevi {num_pages_to_actually_process} sayfa için başlatıldı (her biri yaklaşık {pages_per_task} sayfa).")
     return {
         "message": f"{len(task_ids)} adet embedding oluşturma görevi {num_pages_to_actually_process} sayfa için başlatıldı (her biri yaklaşık {pages_per_task} sayfa).",
         "task_ids": task_ids,
@@ -183,3 +191,5 @@ async def generate_embeddings_old(
              "max_pages_to_process_overall_env": max_pages_to_process_overall if max_pages_to_process_overall is not None else "all (env not set or invalid)"
         }
     }
+
+
