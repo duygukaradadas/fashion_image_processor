@@ -93,7 +93,7 @@ class QdrantService:
         try:
             result = self.client.retrieve(
                 collection_name="fashion_products",
-                ids=[product_id]
+                ids=[product_id],
             )
             if result and result[0].vector is not None:
                 return np.array(result[0].vector, dtype=np.float32)
@@ -208,36 +208,43 @@ class QdrantService:
         except Exception as e:
             print(f"Qdrant'tan silme hatası: {str(e)}")
             return False
-    
+
     def find_similar_products(self, product_id: int, top_n: int = 5) -> List[Dict]:
         """
         Find similar products using Qdrant vector search.
-        
+
         Args:
             product_id: Product ID to find similar items for
             top_n: Number of similar products to return
-            
+
         Returns:
             List of similar product IDs and similarity scores
         """
         try:
-            search_result = self.client.search(
+            # 1. Arama işlemini başlat
+            search_result = self.client.query_points(
                 collection_name="fashion_products",
-                query_vector_id=product_id,
-                limit=top_n + 1
-            )
-            print(f"Qdrant benzer ürün arama sonucu: {search_result}")
-            similar_products = []
+                query=product_id,
+                limit=top_n,
+                with_payload=True,
+                with_vectors=False,
+            ).points
 
+            print(f"Qdrant benzer ürün arama sonucu: {search_result}")
+
+            similar_products = []
             for result in search_result:
-                result_id = result.id if isinstance(result.id, int) else int(result.id)
+                # Bazı sürümlerde result.id string dönebiliyor, integer'a çevir
+                result_id = int(result.id)
+                # Aynı ürünü sonuçlardan hariç tut
                 if result_id != product_id:
                     similar_products.append({
                         'id': result_id,
                         'similarity': result.score
                     })
-            
+
             return similar_products[:top_n]
+
         except Exception as e:
             print(f"Qdrant benzer ürün arama hatası: {str(e)}")
             return []
