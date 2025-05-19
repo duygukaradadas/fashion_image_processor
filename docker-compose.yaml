@@ -4,13 +4,17 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     networks:
-      - fashion_network
+      - fashion_image_processor_network
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     ports:
       - "4000:8000"
     volumes:
       - .:/app
+    env_file:
+      - .env
+
+    
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.image-processor.rule=Host(`${APP_HOST}`)"
@@ -29,7 +33,7 @@ services:
     volumes:
       - .:/app
     networks:
-      - fashion_network
+      - fashion_image_processor_network
     labels:
       - "traefik.enable=false"
 
@@ -38,7 +42,7 @@ services:
     volumes:
       - 'image-processor-redis:/data'
     networks:
-      - fashion_network
+      - fashion_image_processor_network
     healthcheck:
       test:
         - CMD
@@ -62,12 +66,12 @@ services:
     volumes:
       - qdrant-storage:/qdrant/storage
     networks:
-      - fashion_network
+      - fashion_image_processor_network
     labels:
       - "traefik.enable=false"
 
 networks:
-  fashion_network:
+  fashion_image_processor_network:
     external: true
 
 volumes:

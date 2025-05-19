@@ -1,9 +1,10 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, UploadFile, File
 from app.handlers import home_handler, embedding_handler
 from app.tasks.ping import ping
 from app.services.redis_service import RedisService
 from app.services.qdrant_service import QdrantService
 from app.middleware import APIKeyAuthMiddleware
+from app.resnet.model import ResNetEmbedder
 import numpy as np
 
 app = FastAPI()
@@ -34,6 +35,31 @@ async def get_similar_products(
     """Find similar products based on image embeddings."""
     qdrant_service = QdrantService()
     similar_products = qdrant_service.find_similar_products(product_id=product_id, top_n=top_n)
+    return {"similar_products": similar_products}
+
+@app.post("/similar-products/from-image")
+async def find_similar_products_from_image(
+    image: UploadFile = File(...),
+    top_n: int = Query(default=5, description="Number of similar products to return")
+):
+    """
+    Find similar products based on an uploaded image.
+    The image will be transformed into a 2048-sized vector using ResNet50.
+    """
+    # Read the uploaded image
+    image_data = await image.read()
+    
+    # Convert image to embedding using ResNet50
+    embedder = ResNetEmbedder()
+    embedding = embedder.get_embedding(image_data)
+    
+    # Pass the embedding list directly to find_similar_products
+    qdrant_service = QdrantService()
+    similar_products = qdrant_service.find_similar_products(
+        product_id=embedding.tolist(),  # Pass embedding instead of product_id
+        top_n=top_n
+    )
+    
     return {"similar_products": similar_products}
 
 @app.post("/admin/migrate-to-qdrant")
