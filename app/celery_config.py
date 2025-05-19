@@ -26,7 +26,7 @@ celery_app.conf.update(
     # Performance optimizations
     worker_prefetch_multiplier=1,  # Disable prefetching to prevent worker from getting too many tasks
     worker_max_tasks_per_child=1000,  # Restart worker after processing 1000 tasks to prevent memory leaks
-    task_time_limit=300,  # 5 minutes timeout for tasks
+    task_time_limit=3000,  # 5 minutes timeout for tasks
     task_soft_time_limit=240,  # 4 minutes soft timeout
     worker_concurrency=16,  # Increase number of worker processes
     

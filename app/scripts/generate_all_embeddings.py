@@ -26,7 +26,8 @@ def get_all_product_ids(limit: int = 20000) -> List[int]:
     session = create_session()
     
     while len(all_ids) < limit:
-        url = f"https://fashion.aknevrnky.dev/api/products?page={page}"
+        base_url = os.getenv("API_BASE_URL")
+        url = f"{base_url}/api/products?page={page}"
         headers = {
             "accept": "application/json",
             "Authorization": "Bearer fashion-api-token-2025"
