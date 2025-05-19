@@ -71,94 +71,38 @@ GET /similar-products/{product_id}?top_n=5
 ```
 Returns the most similar products based on image embeddings.
 
+### Find Similar Products from an Uploaded Image
+```http
+POST /similar-products/from-image
+```
+Uploads an image, generates its embedding, and returns the most visually similar products.
+
+**Parameters:**
+- `top_n` (form field, optional): Number of similar products to return (default: 5)
+- `image` (form field, required): The image file to upload
+
+**Example cURL usage:**
+```bash
+curl -X POST "http://localhost:4000/similar-products/from-image" \
+  -H "Authorization: Bearer <your_token>" \
+  -F "image=@/path/to/your/image.jpg" \
+  -F "top_n=5"
+```
+
+**Response:**
+```json
+{
+  "similar_products": [
+    {"id": 23272, "similarity": 0.7769556},
+    {"id": 26688, "similarity": 0.7688159},
+    {"id": 19482, "similarity": 0.76556134},
+    {"id": 24246, "similarity": 0.76446295},
+    {"id": 19025, "similarity": 0.7640736}
+  ]
+}
+```
+
 ### Health Check
 ```http
 GET /ping
 ```
-Returns the service status.
-
-## Development
-
-1. Create a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\activate  # Windows
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run Celery worker:
-```bash
-celery -A app.celery_config.celery_app worker --loglevel=info
-```
-
-## Architecture
-
-The service consists of several components:
-- FastAPI application for HTTP endpoints
-- ResNet50 model for feature extraction
-- Redis for embedding storage
-- Celery for background task processing
-
-## Configuration
-
-Environment variables:
-- `API_BASE_URL`: Base URL for the fashion API
-- `REDIS_URL`: Redis connection URL
-- `CELERY_BROKER_URL`: Celery broker URL
-
-## API Usage Examples
-
-### Generate All Embeddings
-```bash
-curl -X POST "http://localhost:4000/embeddings/generate" \
-  -H "Content-Type: application/json"
-```
-
-### Generate Embedding for a Specific Product
-```bash
-curl -X POST "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Update Embedding for a Specific Product
-```bash
-curl -X PUT "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Delete Embedding for a Specific Product
-```bash
-curl -X DELETE "http://localhost:4000/embeddings/product/123" \
-  -H "Content-Type: application/json"
-```
-
-### Find Similar Products
-```bash
-curl -X GET "http://localhost:4000/similar-products/123?top_n=5" \
-  -H "Content-Type: application/json"
-```
-
-## License
-
-MIT License
-
-# Create the client
-client = ApiClient(base_url="https://fashion.aknevrnky.dev")
-
-# Get image bytes by product ID
-image_data = await client.get_product_image(product_id=1)
-
-# Or directly from a URL
-image_data = await client.get_product_image(image_url="https://fashion.aknevrnky.dev/storage/products/10000.jpg")
-
-# Process with PIL/Pillow
-from PIL import Image
-import io
-image = Image.open(io.BytesIO(image_data))
-# Now the image can be processed for training
