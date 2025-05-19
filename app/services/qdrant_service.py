@@ -230,8 +230,6 @@ class QdrantService:
                 with_vectors=False,
             ).points
 
-            print(f"Qdrant benzer ürün arama sonucu: {search_result}")
-
             similar_products = []
             for result in search_result:
                 # Bazı sürümlerde result.id string dönebiliyor, integer'a çevir
