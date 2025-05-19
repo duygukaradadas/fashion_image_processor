@@ -5,7 +5,7 @@ from celery import shared_task
 from app.services.embedding_service import EmbeddingService
 from app.services.redis_service import RedisService
 from app.celery_config import celery_app
-
+from app.services.qdrant_service import QdrantService
 
 @celery_app.task(name="generate_embeddings")
 def generate_embeddings_task(start_page=1, max_pages=None, output_file=None, batch_size=1):
@@ -168,25 +168,22 @@ def update_single_embedding_task(product_id):
 @celery_app.task(name="delete_single_embedding")
 def delete_single_embedding_task(product_id):
     """
-    Tek bir ürün için embedding'i silen Celery görevi.
-    
-    Args:
-        product_id: Embedding'i silinecek ürün ID'si
-        
-    Returns:
-        dict: Görev sonuç bilgileri
+    Delete embedding for a single product from both Redis and Qdrant.
     """
     try:
         # Redis servisi oluştur
         redis_service = RedisService()
-        
+        # Qdrant servisi oluştur
+        qdrant_service = QdrantService()
+
         # Embedding'i sil
-        success = redis_service.delete_embedding(product_id)
-        
+        redis_success = redis_service.delete_embedding(product_id)
+        qdrant_success = qdrant_service.delete_embedding(product_id)
+
         return {
             "status": "completed",
             "product_id": product_id,
-            "success": success
+            "success": redis_success or qdrant_success
         }
     except Exception as e:
         print(f"Error deleting embedding for product {product_id}: {str(e)}")
